@@ -1,0 +1,1036 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Java多线程笔记 | Grinofith&#39;s Blog</title>
+<link rel="shortcut icon" href="https://kanyewestforreal.github.io//favicon.ico?v=1742121326478">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://kanyewestforreal.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Java多线程笔记 | Grinofith&#39;s Blog - Atom Feed" href="https://kanyewestforreal.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="背景
+计算机在执行程序时，每条指令都是在CPU中执行的，而执行指令过程中，势必涉及到数据的读取和写入。由于程序运行过程中的临时数据是存放在主内存（物理内存）当中的，这时就存在一个问题，由于CPU执行速度很快，而从内存读取数据和向内存写入数据..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <!-- <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script> -->
+    <script src="//cdn.jsdelivr.net/npm/leancloud-storage@4.13.2/dist/av-min.js"></script>
+    <script src="/media/js/read_mark.js"></script>
+    <script src="/media/js/highlight/highlight.min.js"></script>
+    <script src="/media/js/sroll_markdown_titile_list.js"></script>
+    <link rel="stylesheet" type="text/css" href="/media/js/highlight/styles/atom-one-dark.css">
+    <script>hljs.highlightAll();</script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://kanyewestforreal.github.io/">
+  <img class="avatar" src="https://kanyewestforreal.github.io//images/avatar.png?v=1742121326478" alt="">
+  </a>
+  <h1 class="site-title">
+    Grinofith&#39;s Blog
+  </h1>
+  <p class="site-description">
+    The key is seriously reflecting.
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Java多线程笔记
+            </h2>
+            <div class="post-info">
+              <span>
+                2025-03-12
+              </span>
+              <span class="post-views">
+                  <span >阅读量：</span>
+                  <span id="dynamic-views-counter"></span>
+              </span>
+              <span>
+                40 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://kanyewestforreal.github.io//post-images/java-multithreading-p1.jpg" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="背景">背景</h1>
+<p>计算机在执行程序时，每条指令都是在CPU中执行的，而执行指令过程中，势必涉及到数据的读取和写入。由于程序运行过程中的临时数据是存放在主内存（物理内存）当中的，这时就存在一个问题，由于CPU执行速度很快，而从内存读取数据和向内存写入数据的过程跟CPU执行指令的速度比起来要慢的多，因此如果任何时候对数据的操作都要通过和内存的交互来进行，会大大降低指令执行的速度。因此在CPU里面就有了高速缓存。</p>
+<p>也就是，当程序在运行过程中，会将运算需要的数据从主存复制一份到CPU的高速缓存当中，那么CPU进行计算时就可以直接从它的高速缓存读取数据和向其中写入数据，当运算结束之后，再将高速缓存中的数据刷新到主存当中。举个简单的例子，比如这段代码：<code>i = i + 1;</code></p>
+<p>当线程执行这个语句时，会先从主内存当中读取i的值，然后复制一份到高速缓存当中，然后CPU执行指令对i进行加1操作，然后将数据写入高速缓存，最后将高速缓存中i最新的值刷新到主内存当中。</p>
+<p>这个代码在单线程中运行是没有任何问题的，但是在多线程中运行就会有问题了。在多核CPU中，每条线程可能运行于不同的CPU中，因此每个线程运行时有自己的高速缓存（对单核CPU来说，其实也会出现这种问题，只不过是以线程调度的形式来分别执行的）。</p>
+<p>比如同时有2个线程执行这段代码：<code>i = i + 1;</code>，假如初始时i的值为0，那么我们希望两个线程执行完之后i的值变为2。但是事实会是这样吗？</p>
+<p>可能存在下面一种情况：初始时，两个线程同时执行，分别读取i的值存入<strong>各自所在</strong>的CPU的高速缓存当中，然后线程1进行加1操作，然后把i的最新值1写入到内存。此时线程2的高速缓存当中i的值还是0，进行加1操作之后，i的值为1，然后线程2把i的值写入内存。</p>
+<p>最终结果i的值是1，而不是2。这就是著名的缓存一致性问题。通常称这种<strong>被多个线程访问</strong>的变量为<strong>共享变量</strong>。</p>
+<p>也就是说，如果一个变量在多个CPU中都存在缓存（一般在多线程编程时才会出现），那么就可能存在缓存不一致的问题。</p>
+<p>为了解决缓存不一致性问题，通常来说有以下2种解决方法：</p>
+<p>1）通过在总线加LOCK#锁的方式</p>
+<p>2）通过缓存一致性协议</p>
+<p>这2种方式都是硬件层面上提供的方式。</p>
+<p>在早期的CPU当中，是通过在总线上加LOCK#锁的形式来解决缓存不一致的问题。因为CPU和其他部件进行通信都是通过总线来进行的，如果对总线加LOCK#锁的话，也就是说阻塞了其他CPU对其他部件访问（如内存），从而使得只能有一个CPU能使用这个变量的内存。比如上面例子中 如果一个线程在执行 i = i +1，如果在执行这段代码的过程中，在总线上发出了LCOK#锁的信号，那么只有等待这段代码完全执行完毕之后，其他CPU才能从变量i所在的内存读取变量，然后进行相应的操作。这样就解决了缓存不一致的问题。</p>
+<p>但是上面的方式会有一个问题，由于在锁住总线期间，其他CPU无法访问内存，导致效率低下。</p>
+<p>所以就出现了<strong>缓存一致性协议</strong>。最出名的就是Intel 的MESI协议，MESI协议保证了每个缓存中使用的共享变量的副本是一致的。它核心的思想是：每个处理器通过嗅探在总线上传播的数据来检查自己的CPU内存的值是否过期，当处理器发现自己的缓存行对应的内存地址被修改了，就会将当前处理器的缓存行设置为无效状态。当处理器对该数据进行修改操作时，会重新从系统内存（主存）中把数据读到处理器缓存（CPU内存）里。</p>
+<h1 id="多线程的三大核心问题">多线程的三大核心问题</h1>
+<ol>
+<li>
+<p><strong>原子性</strong>（<strong>竞态条件</strong>）：多个线程同时修改共享数据时，结果可能不可预测。我们期望的是一个操作或者多个操作，要么全部执行并且执行的过程不会被任何因素打断，要么就都不执行。<br>
+（如多个线程同时修改<code>mPendingData</code>）</p>
+<pre><code class="language-java">x = 10;   //语句1
+y = x;    //语句2
+x++;      //语句3
+x = x + 1;   //语句4
+//其实只有语句1是原子性操作，其他三个语句都不是原子性操作。
+//语句1是直接将数值10赋值给x，也就是说线程执行这个语句的会直接将数值10写入到工作内存中。
+//语句2实际上包含2个操作，它先要去读取x的值，再将x的值写入工作内存，虽然读取x的值以及 将x的值写入工作内存 这2个操作都是原子性操作，但是合起来就不是原子性操作了。
+//同样的，x++和 x = x+1包括3个操作：读取x的值，进行加1操作，写入新的值。
+//所以上面4个语句只有语句1的操作具备原子性。
+//也就是说，只有简单的读取、赋值（而且必须是将数字赋值给某个变量，变量之间的相互赋值不是原子操作）才是原子操作。
+</code></pre>
+</li>
+<li>
+<p><strong>可见性</strong>（<strong>数据竞争</strong>）：一个线程修改数据后，其他线程可能无法立即看到最新值。我们期望的是多个线程访问同一个变量时，一个线程修改了这个变量的值，其他线程能够立即看得到修改的值。<br>
+（如后台线程修改数据后，主线程读取旧值）</p>
+<pre><code class="language-java">//线程1执行的代码
+int i = 0;
+i = 10;
+ 
+//线程2执行的代码
+j = i;
+//假若执行线程1的是CPU1，执行线程2的是CPU2。由上面的分析可知，当线程1执行 i =10这句时，会先把i的初始值加载到CPU1的高速缓存中，然后赋值为10，那么在CPU1的高速缓存当中i的值变为10了，却没有立即写入到主存当中。
+//此时线程2执行 j = i，它会先去主存读取i的值并加载到CPU2的缓存当中，注意此时内存当中i的值还是0，那么就会使得j的值为0，而不是10.
+//这就是可见性问题，线程1对变量i修改了之后，线程2没有立即看到线程1修改的值。
+</code></pre>
+</li>
+<li>
+<p><strong>有序性</strong>：代码执行顺序可能与代码编写顺序不一致导致出现不可预期的错误（由CPU/编译器优化导致）。我们期望的是所见即所得，代码执行顺序与代码编写顺序尽可能一致。</p>
+<pre><code class="language-java">//线程1:
+context = loadContext();  //语句1
+inited = true;       //语句2
+//线程2:
+while(!inited){
+ 	sleep()
+}
+doSomethingwithconfig(context);
+//上面代码中，由于语句1和语句2没有数据依赖性，因此可能会被重排序。
+//假如发生了重排序，在线程1执行过程中先执行语句2，而此是线程2会以为初始化工作已经完成，那么就会跳出while循环，去执行doSomethingwithconfig(context)方法，而此时context并没有被初始化，就会导致程序出错。
+//从上面可以看出，指令重排序不会影响单个线程的执行，但是会影响到线程并发执行的正确性。
+</code></pre>
+</li>
+</ol>
+<h1 id="happens-before先行发生原则">Happens-Before（先行发生）原则</h1>
+<p>Happens-Before（先行发生）原则是对 Java 内存模型（JMM）中所规定的可见性的更高级的语言层面的描述。用这个原则解决并发环境下两个操作之间的可见性问题，而不需要陷入 Java 内存模型苦涩难懂的定义中。如果两个操作的执行次序无法从happens-before原则推导出来，那么它们就不能保证它们的有序性，虚拟机可以随意地对它们进行重排序。</p>
+<h2 id="定义">定义</h2>
+<ul>
+<li><strong>程序次序规则（Program Order Rule）</strong>：在一个线程内，按照<strong>控制流顺序</strong>，书写在前面的操作先行发生于书写在后面的操作。只是保证了单线程中的程序执行顺序是看起来按照书写顺序的，CPU/编译器仍然可以对此进行重排，只要依赖关系不发生冲突。</li>
+<li><strong>管程锁定规则（Monitor Lock Rule）</strong>：一个 unlock 操作先行发生于后面对同一个锁的 lock 操作。</li>
+<li><strong>volatile 变量规则（Volatile Variable Rule）</strong>：对一个 volatile 变量的写操作先行发生于后面对这个变量的读操作。</li>
+<li><strong>线程启动规则（Thread Start Rule）</strong>：Thread 对象 start()方法先行发生于此线程的每一个动作。</li>
+<li><strong>线程终止规则（Thread Termination Rule）</strong>：线程中的所有操作都先行发生于对此线程的终止检测，我们可以通过 Thread.join()方法和 Thread.isAlive()的返回值等手段检测线程是否已经终止执行。</li>
+<li><strong>线程中断规则（Thread Interruption Rule）</strong>：对线程 interrupt()方法的调用先行发生于被中断线程的代码检测到中断事件的发生，可以通过 Thread.interrupted()方法检测到是否有中断发生。</li>
+<li><strong>对象终结规则（Finalizer Rule）</strong> ：一个对象的初始化完成（构造函数结束）先行发生于它的 finalize()方法的开始。</li>
+<li><strong>传递性（Transitivity）</strong>：如果操作 A <strong>先行发生</strong>于操作 B，操作 B 先行发生于操作 C，那就可以得出操作 A 先行发生于操作 C 的结论。如果前七条都不成立，那么这一条没有使用价值。</li>
+</ul>
+<h2 id="注意">注意</h2>
+<ul>
+<li>Happens-before 关系保证正确同步的多线程程序的执行结果不被改变。</li>
+<li>Happens-before 关系给编写正确同步的多线程程序的程序员创造了一个<strong>幻境</strong>：正确同步的多线程程序是按 Happens-before 指定的顺序来执行的。实际上，CPU/编译器仍然可以对执行顺序进行重排，只要依赖关系不发生冲突。</li>
+</ul>
+<h1 id="volatile易挥发的">volatile（易挥发的）</h1>
+<ul>
+<li>volatile关键字的作用是什么?</li>
+<li>volatile能保证原子性吗?</li>
+<li>之前32位机器上共享的long和double变量的为什么要用volatile? 现在64位机器上是否也要设置呢?</li>
+<li>i++为什么不能保证原子性?</li>
+<li>volatile是如何实现可见性的? 内存屏障。</li>
+<li>volatile是如何实现有序性的? happens-before等</li>
+<li>说下volatile的应用场景?</li>
+</ul>
+<h2 id="作用">作用</h2>
+<p>一旦一个共享变量（类的成员变量、类的静态成员变量）被volatile修饰之后，那么就具备了两层语义：</p>
+<ol>
+<li><strong>实现可见性</strong>：保证了不同线程对这个变量进行操作时的可见性，即一个线程修改了某个变量的值，这新值对其他线程来说是立即可见的。</li>
+<li><strong>实现有序性</strong>：禁止指令重排序。</li>
+</ol>
+<h2 id="效果">效果</h2>
+<p>使用volatile关键字会强制将修改的值立即写入主存；</p>
+<p>使用volatile关键字的话，当线程1进行修改时，会导致线程2的工作内存中缓存变量的缓存行无效（反映到硬件层的话，就是CPU的L1或者L2缓存中对应的缓存行无效）；</p>
+<p>由于线程2的工作内存中缓存变量的缓存行无效，所以线程2会再次读取变量的值时会去主内存读取；</p>
+<h2 id="volatile-可见性实现原理">volatile 可见性实现原理</h2>
+<p>为了提高处理速度，处理器不直接和内存进行通信，而是先将内存的数据读到内部缓存后再进行操作，但操作完后写入内存的时间是不确定的（现代主流的缓存架构中），所以会出现各线程共享变量数据不一致的结果。</p>
+<p>如果当前 CPU 平台支持多核核 atomic 操作的话（现代的绝大多数的 CPU 都支持），对于有volatile修饰的变量，会在JVM生成的字节码中加入<code>ACC_VOLATILE</code>的标识，后续会调用 OrderAccess::fence()对volatile修饰的变量进行进一步处理，这个函数的实现是与具体平台相关的，所以我们就简单看下 linux 平台的 x86 架构的实现。</p>
+<h3 id="linux-x86">Linux  x86</h3>
+<pre><code class="language-C++">//src/hotspt/os_cpu/linux_x86/orderAccess_linux_x86.hpp:
+inline void OrderAccess::fence() {
+   // always use locked addl since mfence is sometimes expensive
+#ifdef AMD64
+  __asm__ volatile (&quot;lock; addl $0,0(%%rsp)&quot; : : : &quot;cc&quot;, &quot;memory&quot;);
+#else
+  __asm__ volatile (&quot;lock; addl $0,0(%%esp)&quot; : : : &quot;cc&quot;, &quot;memory&quot;);
+#endif
+  compiler_barrier();
+}
+</code></pre>
+<p>可以看到无论是 AMD 64 还是 x86 都是使用 lock addl 指令实现的。</p>
+<p>对Class文件查看汇编指令时，被 <code>volatile</code> 修饰的变量，如果对其进行写操作，可以看见会多一个<strong>lock前缀的指令</strong>：<code>lock addl $0x0,(%rsp)</code>。</p>
+<figure data-type="image" tabindex="1"><img src="https://kanyewestforreal.github.io//post-images/1741780083256.png" alt="volatile 修饰变量的写操作" loading="lazy"></figure>
+<blockquote>
+<p>volatile 修饰变量的写操作</p>
+</blockquote>
+<figure data-type="image" tabindex="2"><img src="https://kanyewestforreal.github.io//post-images/1741780106682.png" alt="非volatile 修饰变量的写操作" loading="lazy"></figure>
+<blockquote>
+<p>非volatile 修饰变量的写操作</p>
+</blockquote>
+<p>lock前缀的指令的作用：</p>
+<ul>
+<li>用于保证特定指令的原子性，通过锁定总线或缓存（现代 CPU 通常采用缓存锁定，如果不支持缓存锁，会加总线锁），确保指令执行期间独占访问目标内存。</li>
+<li>将<strong>目标内存地址所在的缓存行</strong>的数据写回到<strong>主内存</strong>（系统内存）中，写回主内存的操作会使其他线程的CPU缓存中<strong>该内存地址的数据无效</strong>（通过缓存一致协议，使得缓存失效），需要重新到内存获取。（注意这里没有实现刷新其他CPU缓存，而是依赖于缓存一致协议）</li>
+</ul>
+<p>tips：<code>lock</code>指令影响的是<strong>目标内存地址所在的缓存行</strong>（通常为<strong>64字节</strong>），而非整个缓存。例如，若操作地址为<code>0x1000</code>，则整个包含<code>0x1000</code>的缓存行会被锁定并同步到主存，其他缓存行不受影响。</p>
+<p>所以使用 lock前缀的指令，会将处理器缓存的数据写回主存中，同时使其他线程的处理器缓存的数据失效，这样其他线程需要使用数据时，会从主存中读取最新的数据，从而实现可见性。</p>
+<h3 id="linux-arm">Linux  ARM</h3>
+<pre><code class="language-cpp">//src/hotspt/os_cpu/linux_arm/orderAccess_linux_arm.hpp:
+inline void OrderAccess::fence()      { dmb_sy(); }
+
+inline static void dmb_sy() {
+   if (!os::is_MP()) {
+     return;
+   }
+#ifdef AARCH64
+   __asm__ __volatile__ (&quot;dmb sy&quot; : : : &quot;memory&quot;);
+#else
+   if (VM_Version::arm_arch() &gt;= 7) {
+#ifdef __thumb__
+     __asm__ volatile (
+     &quot;dmb sy&quot;: : : &quot;memory&quot;);
+#else
+     __asm__ volatile (
+     &quot;.word 0xF57FF050 | 0xf&quot; : : : &quot;memory&quot;);
+#endif
+   } else {
+     intptr_t zero = 0;
+     __asm__ volatile (
+       &quot;mcr p15, 0, %0, c7, c10, 5&quot;
+       : : &quot;r&quot; (zero) : &quot;memory&quot;);
+   }
+#endif
+}
+</code></pre>
+<p>可以看到是大概是使用 <code>dmb sy</code> 指令实现的。</p>
+<p>通过查询ARM官方的文档我们可以知道，DMB SY的作用：</p>
+<p>是一个<strong>数据内存屏障</strong>，确保在全系统域内，屏障之前的读写操作在屏障之后的读写操作之前完成。也就是说禁止重排序。同时<strong>不强制立即刷新写缓冲区</strong>，而是通过 <code>DMB</code> 屏障确保操作的顺序性，依赖缓存一致性协议最终完成数据同步。与 <code>x86</code> 通过<code>lock</code> 指令显式清空写缓冲区，强制将修改刷入缓存/内存不同。</p>
+<h2 id="volatile-有序性实现原理">volatile 有序性实现原理</h2>
+<p><strong>内存屏障</strong>（英语：Memory barrier），也称<strong>内存栅栏</strong>，是一类<a href="https://zh.wikipedia.org/wiki/%E5%90%8C%E6%AD%A5%E5%B1%8F%E9%9A%9C">同步屏障</a>指令，它使得 <strong>CPU 或编译器</strong>在对内存进行操作的时候, 严格按照一定的顺序来执行, 也就是说在内存屏障之前的指令和之后的指令不会由于系统优化等原因而导致乱序。大多数现代计算机为了提高性能而采取乱序执行，这使得内存屏障成为必须。</p>
+<p>为了性能优化，JMM 在不改变结果的前提下，会允许编译器和处理器对指令序列进行重排序。JMM 提供了内存屏障阻止这种重排序。<strong>不同硬件实现内存屏障的方式不同，Java内存模型屏蔽了这种底层硬件平台的差异，由JVM来为不同的平台生成相应的机器码</strong>。</p>
+<p>所以内存屏障分为两个层面：</p>
+<ul>
+<li><strong>硬件层面的内存屏障</strong></li>
+<li><strong>JVM层面的内存屏障</strong></li>
+</ul>
+<h3 id="硬件层面的内存屏障">硬件层面的内存屏障</h3>
+<ol>
+<li>Load（读）屏障：确保屏障之前的读操作在屏障之后的读操作之前完成。</li>
+<li>Store（写）屏障：确保屏障之前的写操作在屏障之后的写操作之前完成。</li>
+<li>Full（全）屏障：同时具有Load屏障和Store屏障的功能，确保屏障之前的读写操作在屏障之后的读写操作之前完成。</li>
+</ol>
+<p>不同硬件通过不同的指令实现这三种屏障。</p>
+<h3 id="jvm层面的内存屏障">JVM层面的内存屏障</h3>
+<p>JVM层面的内存屏障实现<strong>禁止指令重排序</strong>有四种指令：</p>
+<p>LoadLoad</p>
+<p>作用于：Load1；LoadLoad；Load2。确保 Load1 一定是在 Load2 以及其后的指令之前完成，禁止屏障的前后重排序。</p>
+<pre><code class="language-java">// 线程A
+int local = sharedVar;  // 普通读
+int v = volatileVar;    // volatile读
+//LoadLoad
+//LoadStore
+int a = local;          // 后续普通读
+sharedVar2 = 42;        // 后续普通写
+</code></pre>
+<p>StoreStore</p>
+<p>作用于：Store1；StoreStore；Store2。确保 Store1 一定是在 Store2 以及其后的指令之前完成，同时，对Store1 的写入数据所在的缓存行进行刷新，禁止屏障的前后重排序。</p>
+<pre><code class="language-java">// 线程A
+sharedVar = 42;         // 普通写
+//插StoreStore屏障
+volatileVar = 1;        // volatile写
+
+// 线程B
+if (volatileVar == 1) { // volatile读
+    System.out.println(sharedVar); // 普通读
+}
+
+//若没有屏障，线程A的 sharedVar = 42 可能被重排序到 volatileVar = 1 之后，使其修改未对其他线程可见。
+</code></pre>
+<p>LoadStore</p>
+<p>作用于：Load1；LoadStore；Store2。确保 Load1 一定是在 Store2 以及其后的指令之前完成，禁止屏障的前后重排序。</p>
+<p>StoreLoad</p>
+<p>作用于：Store1；StoreLoad；Load2。确保 Store1 一定在 Load2 以及其后的指令之前完成，同时，对Store1 的写入数据所在的缓存行进行刷新，禁止屏障的前后重排序。</p>
+<pre><code class="language-java">// 线程A
+volatileVar = 1;        // volatile写
+//StoreLoad屏障
+int a = sharedVar;      // 普通读
+//若没有屏障，int a = sharedVar可能被重排到volatile写之前，导致读取到其他线程未更新的值。屏障强制刷新写缓存，使volatile写全局可见。
+</code></pre>
+<h3 id="jvm对volatile的插入屏障策略">JVM对volatile的插入屏障策略</h3>
+<p>JVM对volatile的插入屏障策略是非常保守的。</p>
+<ul>
+<li>在每个 <code>volatile</code> <strong>读</strong>操作的后面插入一个 LoadLoad 屏障；在每个 <code>volatile</code> <strong>读</strong>操作的后面插入一个 LoadStore 屏障。防止后续的普通<strong>读/写</strong>操作被重排序到<code>volatile读</code>之前。</li>
+<li>在每个 <code>volatile</code> <strong>写</strong>操作的前面插入一个 StoreStore 屏障；在每个 <code>volatile</code> <strong>写</strong>操作的后面插入一个 StoreLoad 屏障。</li>
+</ul>
+<figure data-type="image" tabindex="3"><img src="https://kanyewestforreal.github.io//post-images/1741780164308.png" alt="java-thread-x-key-volatile-4" loading="lazy"></figure>
+<figure data-type="image" tabindex="4"><img src="https://kanyewestforreal.github.io//post-images/1741780184314.png" alt="java-thread-x-key-volatile-3" loading="lazy"></figure>
+<h4 id="linux-x86-2">Linux  x86</h4>
+<p>这四个 Barrier 只是 Java 为了跨平台而设计出来的，实际上根据 CPU 的不同，对应 CPU 平台上的 JVM 可能可以优化掉一些 Barrier。比如很多 CPU 在读写同一个变量的时候能保证它连续操作的顺序性，那就不用加 Barrier 了。</p>
+<p>比如 <code>Load x; Load x.field</code> ，读 x 再读 x 下面某个 field，如果访问同一个内存 CPU 能保证顺序性，两次读取之间的 Barrier 就不再需要了，根据字节码编译得到的汇编指令中，本来应该插入 Barrier 的地方会被替换为 <code>nop</code>，即空操作。在 x86 上，实际只有 <code>StoreLoad</code> 这一个 Barrier 是有效的，x86 上没有 Invalidate Queue，每次 Store 数据又都会去 Store Buffer 排队，所以 <code>StoreStore</code>， <code>LoadLoad</code> 都不需要。x86 又能保证 Store 操作都会走 Store Buffer 异步刷写，Store 不会被重排到 Load 之前，<code>LoadStore</code> 也是不需要的。只剩下一个 <code>StoreLoad</code> Barrier 在 x86 平台的 JVM 上被使用。</p>
+<p>可以看到 x86 下使用的是 <code>lock</code> 来实现 <code>StoreLoad</code>，并且只有 <code>StoreLoad</code> 有效果。</p>
+<pre><code class="language-cpp">//https://github.com/openjdk/jdk/blob/9a69bb807beb6693c68a7b11bee435c0bab7ceac/src/hotspot/cpu/x86/assembler_x86.hpp  
+enum Membar_mask_bits {
+    StoreStore = 1 &lt;&lt; 3,
+    LoadStore  = 1 &lt;&lt; 2,
+    StoreLoad  = 1 &lt;&lt; 1,
+    LoadLoad   = 1 &lt;&lt; 0
+  };
+
+  // Serializes memory and blows flags
+  void membar(Membar_mask_bits order_constraint) {
+    // We only have to handle StoreLoad
+    if (order_constraint &amp; StoreLoad) {
+	//所有可用芯片都支持“lock”指令，这些指令足以作为屏障，并且比使用 cpuid 指令的替代方案快得多。我们在这里使用锁定的添加 [esp-C],0。
+      int offset = -VM_Version::L1_line_size();
+      if (offset &lt; -128) {
+        offset = -128;
+      }
+
+      lock();
+      addl(Address(rsp, offset), 0);// Assert the lock# signal here
+    }
+  }
+
+</code></pre>
+<p><strong>所以说lock指令在x86架构下，不仅实现了volatile的可见性，也实现了有序性。</strong></p>
+<h4 id="linux-arm-2">Linux  ARM</h4>
+<p>ARM 的 CPU Load 与 Load，Load 与 Store，Store 与 Store，Store 与 Load 都会乱序。</p>
+<p>所以四种屏障都需要使用。</p>
+<p>可以看到 arm 下使用的是 <code>dmb</code> 来实现的。</p>
+<pre><code class="language-cpp">//https://github.com/openjdk/jdk/blob/9a69bb807beb6693c68a7b11bee435c0bab7ceac/src/hotspot/cpu/arm/macroAssembler_arm.cpp
+void MacroAssembler::membar(Membar_mask_bits order_constraint,
+                            Register tmp,
+                            bool preserve_flags,
+                            Register load_tgt) {
+
+  if (order_constraint == StoreStore) {
+    dmb(DMB_st, tmp);
+  } else if ((order_constraint &amp; StoreLoad)  ||
+             (order_constraint &amp; LoadLoad)   ||
+             (order_constraint &amp; StoreStore) ||
+             (load_tgt == noreg)             ||
+             preserve_flags) {
+    dmb(DMB_all, tmp);
+  } else {
+    // LoadStore: speculative stores reordeing is prohibited
+
+    // By providing an ordered load target register, we avoid an extra memory load reference
+    Label not_taken;
+    bind(not_taken);
+    cmp(load_tgt, load_tgt);
+    b(not_taken, ne);
+  }
+}
+
+  //https://github.com/openjdk/jdk/blob/1fe45265e446eeca5dc496085928ce20863a3172/src/hotspot/cpu/arm/assembler_arm_32.hpp#L523
+  enum DMB_Opt {
+    DMB_all = 0xf,
+    DMB_st  = 0xe,
+  };
+
+  void dmb(DMB_Opt opt, Register reg) {
+    if (VM_Version::arm_arch() &gt;= 7) {
+      emit_int32(0xF57FF050 | opt);
+    } else if (VM_Version::arm_arch() == 6) {
+      bool preserve_tmp = (reg == noreg);
+      if(preserve_tmp) {
+        reg = Rtemp;
+        str(reg, Address(SP, -wordSize, pre_indexed));
+      }
+      mov(reg, 0);
+      // DataMemoryBarrier
+      emit_int32(0xe &lt;&lt; 28 |
+                0xe &lt;&lt; 24 |
+                0x7 &lt;&lt; 16 |
+                reg-&gt;encoding() &lt;&lt; 12  |
+                0xf &lt;&lt; 8  |
+                0xb &lt;&lt; 4  |
+                0xa);
+      if(preserve_tmp) {
+        ldr(reg, Address(SP, wordSize, post_indexed));
+      }
+    }
+  }
+
+</code></pre>
+<p><strong>所以说dmb指令在arm架构下，不仅实现了volatile的可见性，也实现了有序性。</strong></p>
+<h3 id="volatile禁止重排序场景">volatile禁止重排序场景</h3>
+<ul>
+<li>第二个操作是volatile写，不管第一个操作是什么都不会重排序到其后面。</li>
+<li>第一个操作是volatile读，不管第二个操作是什么都不会重排序到其前面。</li>
+<li>第一个操作时volatile写，第二个操作时volatile读，也不会发生重排序。</li>
+</ul>
+<h2 id="禁止使用volatile的条件">禁止使用volatile的条件</h2>
+<h3 id="在需要原子性时不可以仅使用volatile">在需要原子性时不可以仅使用volatile</h3>
+<p>没有实现锁。如果多线程并发执行自增操作，结果无法预测。</p>
+<h3 id="对变量的写操作依赖于当前值">对变量的写操作依赖于当前值</h3>
+<p><strong>自增操作（依赖当前值）</strong></p>
+<pre><code class="language-java">public class VolatileExample1 {
+    private volatile int count = 0;
+
+    // 线程不安全的自增操作
+    public void increment() {
+        count++; // 实际是三步操作：读取旧值 → 修改值 → 写回新值
+    }
+}
+</code></pre>
+<p><strong>问题</strong>：<br>
+<code>count++</code> 是 <code>读 → 改 → 写</code> 的复合操作，若多线程同时调用 <code>increment()</code>，可能出现以下情况：</p>
+<ol>
+<li>线程 A 读取 <code>count=0</code>；</li>
+<li>线程 B 也读取 <code>count=0</code>；</li>
+<li>线程 A 将 <code>count</code> 改为 1 并写回；</li>
+<li>线程 B 将 <code>count</code> 改为 1 并写回；<br>
+最终 <code>count</code> 实际只增加了 1（而不是预期的 2）。</li>
+</ol>
+<p><strong>结论</strong>：<br>
+对 <code>volatile</code> 变量的写操作如果依赖当前值（如自增），读取-&gt;修改-&gt;写回，这一系列操作必须是不可分的，否则任一调动链打断，就会导致预期结果无法出现，必须使用 <code>synchronized</code> 或 <code>AtomicInteger</code>。</p>
+<h3 id="该变量包含在有其他变量参与的不变式中">该变量包含在有其他变量参与的不变式中</h3>
+<p><strong>多变量依赖的不变式</strong></p>
+<pre><code class="language-java">public class VolatileExample2 {
+    private volatile int lower = 0;
+    private volatile int upper = 10;
+
+    // 检查 lower &lt;= upper 的不变式
+    public boolean isValid() {
+        return lower &lt;= upper;
+    }
+
+    // 线程 A 调用：设置 lower=5
+    public void setLower(int value) {
+        if (value &gt; upper) throw new IllegalArgumentException();
+        lower = value;
+    }
+
+    // 线程 B 调用：设置 upper=4
+    public void setUpper(int value) {
+        if (value &lt; lower) throw new IllegalArgumentException();
+        upper = value;
+    }
+}
+</code></pre>
+<p><strong>问题</strong>：</p>
+<ol>
+<li>初始状态：<code>lower=0</code>, <code>upper=10</code>；</li>
+<li>线程 A 调用 <code>setLower(5)</code>，检查 <code>5 &lt;= 10</code> 通过；</li>
+<li>线程 B 调用 <code>setUpper(4)</code>，检查 <code>4 &gt;= 0</code> 通过；</li>
+<li>线程 A 执行 <code>lower=5</code>；</li>
+<li>线程 B 执行 <code>upper=4</code>；<br>
+最终 <code>lower=5</code> 且 <code>upper=4</code>，破坏了 <code>lower &lt;= upper</code> 的不变式。</li>
+</ol>
+<p><strong>结论</strong>：<br>
+若变量与其他变量存在不变式（如 <code>lower &lt;= upper</code>），读取-&gt;检查-&gt;修改，这一系列操作必须是不可分的，否则任一调动链打断，就会导致预期结果无法出现，仅仅用 <code>volatile</code> 无法保证原子性，需使用 <code>synchronized</code> 或锁机制。</p>
+<p>解决：</p>
+<pre><code class="language-java">public class FixedInvariant {
+    private int lower = 0;
+    private int upper = 10;
+
+    // 用 synchronized 保证原子性
+    public synchronized void setLower(int value) {
+        if (value &gt; upper) throw new IllegalArgumentException();
+        lower = value;
+    }
+
+    public synchronized void setUpper(int value) {
+        if (value &lt; lower) throw new IllegalArgumentException();
+        upper = value;
+    }
+}
+</code></pre>
+<p><strong>原理</strong>：</p>
+<ul>
+<li>线程 A 调用 <code>setLower(5)</code> 时，会获取对象锁。</li>
+<li>线程 B 调用 <code>setUpper(4)</code> 时，必须等待线程 A 释放锁。</li>
+<li>线程 A 的 <code>检查 → 修改</code> 操作是原子的，不会被线程 B 打断。</li>
+<li>最终 <code>lower=5</code>, <code>upper=10</code>（因为线程 B 的 <code>setUpper(4)</code> 会因 <code>4 &lt; 5</code> 抛出异常）。</li>
+</ul>
+<h2 id="常使用volatile的场景">常使用volatile的场景</h2>
+<h3 id="状态标志">状态标志</h3>
+<p>简单布尔值控制线程启停。</p>
+<p><strong>需求</strong>：<strong>一个线程需要根据另一个线程设置的标志终止循环。</strong><br>
+<strong>示例</strong>：</p>
+<pre><code class="language-java">public class ShutdownThread {
+    private volatile boolean shutdownRequested = false;
+
+    // 工作线程
+    public void doWork() {
+        while (!shutdownRequested) {
+            // 执行任务...
+        }
+        System.out.println(&quot;线程安全退出&quot;);
+    }
+
+    // 外部线程调用此方法终止工作线程
+    public void shutdown() {
+        shutdownRequested = true;
+    }
+}
+</code></pre>
+<p><strong>解释</strong>：</p>
+<ul>
+<li><strong>为什么用 <code>volatile</code></strong>：<br>
+工作线程需要立即感知 <code>shutdownRequested</code> 被修改为 <code>true</code>。<br>
+若不用 <code>volatile</code>，工作线程可能因本地缓存问题，永远无法检测到 <code>shutdownRequested</code> 的变化。</li>
+<li><strong>符合条件</strong>：<br>
+对 <code>shutdownRequested</code> 的写操作是<strong>直接赋值</strong>（不依赖当前值），且不参与其他变量的不变式。</li>
+</ul>
+<h3 id="安全发布对象">安全发布对象</h3>
+<p>如单例模式中的双重检查锁定。</p>
+<p><strong>需求</strong>：实现线程安全的单例模式。<br>
+<strong>示例</strong>：</p>
+<pre><code class="language-java">public class Singleton {
+    private static volatile Singleton instance;
+
+    private Singleton() {}
+
+    public static Singleton getInstance() {
+        if (instance == null) {                      
+            // 第一次检查：避免更多的锁竞争（每个线程都竞争进入接下来的synchronized代码块，只需要instance为不空，就没必要竞争，直接返回结果。instance是volatile对象，只要被创建会立马刷新到主内存，减少后续锁竞争）
+            synchronized (Singleton.class) { 
+                //使用synchronized是为了保证原子性、以及！可见性！
+                if (instance == null) {               
+                    // 第二次检查：避免多次重复new，线程2经过判断为null，准备竞争锁去创建对象，但是线程1已经在创建对象，instance指向完全初始化的对象后立刻刷新到主内存，线程1释放锁，线程2进入锁判断发现不为null结束。
+                    instance = new Singleton();       
+                    // volatile 的作用主要是禁止指令重排序，保证一定完全初始化
+                }
+            }
+        }
+        return instance;
+    }
+}
+</code></pre>
+<p><strong>解释</strong>：</p>
+<ul>
+<li>
+<p><strong>为什么用 <code>volatile</code></strong>：</p>
+</li>
+<li>
+<p>当通过 <code>new Singleton()</code> 创建一个对象时，实际会经历以下步骤：</p>
+<pre><code class="language-java">instance = new Singleton(); // 实际分为 3 步：
+1. 分配内存空间（堆内存中开辟一块内存）
+2. 调用构造方法初始化对象（执行 `private Singleton() {}`）
+3. 将 `instance` 引用指向分配的内存地址（赋值操作）
+</code></pre>
+<p>new Singleton()` 的步骤可能被 JVM 重排序为：</p>
+<ol>
+<li>分配内存空间；</li>
+<li>将引用指向内存（此时 <code>instance != null</code>）；</li>
+<li>初始化对象。<br>
+若没有 <code>volatile</code>，其他线程可能拿到未初始化的 <code>instance</code>。</li>
+</ol>
+</li>
+<li>
+<p><strong>符合条件</strong>：<br>
+<code>instance</code> 的写操作是直接赋值，且不依赖其他变量。</p>
+</li>
+</ul>
+<h3 id="观察者模式">观察者模式</h3>
+<p>状态变更的即时通知。</p>
+<p><strong>需求</strong>：一个线程更新状态，其他线程需要立即感知。<br>
+<strong>示例</strong>：</p>
+<pre><code class="language-java">public class SensorDataMonitor {
+    private volatile double currentTemperature;
+
+    // 传感器线程调用此方法更新温度
+    public void updateTemperature(double temperature) {
+        currentTemperature = temperature;
+    }
+
+    // 监控线程调用此方法获取最新温度
+    public void displayTemperature() {
+        System.out.println(&quot;当前温度：&quot; + currentTemperature);
+    }
+}
+</code></pre>
+<p><strong>解释</strong>：</p>
+<ul>
+<li><strong>为什么用 <code>volatile</code></strong>：<br>
+确保监控线程能立即读取到传感器线程写入的最新温度值。<br>
+若不用 <code>volatile</code>，监控线程可能因缓存问题读到旧值。</li>
+<li><strong>符合条件</strong>：<br>
+直接赋值，不依赖当前值，且独立于其他变量。</li>
+</ul>
+<h3 id="读多写少的计数器">读多写少的计数器</h3>
+<p>写操作冲突极少时的高性能读取。</p>
+<p><strong>需求</strong>：一个计数器，写操作极少，读操作频繁。<br>
+<strong>示例</strong>：</p>
+<pre><code class="language-java">public class LowContentionCounter {
+    private volatile int count = 0;
+
+    // 仅偶尔调用此方法
+    public void increment() {
+        count++;  // 不保证原子性，但写操作极少时冲突概率低
+    }
+
+    // 频繁调用此方法
+    public int getCount() {
+        return count;  // volatile 保证读取最新值
+    }
+}
+</code></pre>
+<p><strong>解释</strong>：</p>
+<ul>
+<li><strong>为什么用 <code>volatile</code></strong>：<br>
+写操作极少时，<code>volatile</code> 的可见性足够满足需求，且比 <code>synchronized</code> 或 <code>AtomicInteger</code> 性能更高。</li>
+<li><strong>风险</strong>：<br>
+<code>count++</code> 不是原子操作，写操作较多时需改用 <code>AtomicInteger</code>。</li>
+</ul>
+<h3 id="一次性状态初始化">一次性状态初始化</h3>
+<p>避免重复初始化</p>
+<p><strong>需求</strong>：延迟初始化一个资源，确保只初始化一次。<br>
+<strong>示例</strong>：</p>
+<pre><code class="language-java">public class ResourceHolder {
+    private volatile Resource resource;
+
+    public Resource getResource() {
+        if (resource == null) {                        // 第一次检查
+            synchronized (this) {
+                if (resource == null) {                // 第二次检查
+                    resource = new Resource();         // volatile 保证安全发布
+                }
+            }
+        }
+        return resource;
+    }
+}
+</code></pre>
+<p><strong>解释</strong>：</p>
+<ul>
+<li><strong>为什么用 <code>volatile</code></strong>：<br>
+防止其他线程在 <code>resource</code> 未完全初始化时就拿到引用。</li>
+<li><strong>符合条件</strong>：<br>
+直接赋值，不依赖其他变量。</li>
+</ul>
+<h1 id="synchronized-ˈsɪŋkrənʌɪz">synchronized （/ˈsɪŋkrənʌɪz/）</h1>
+<ul>
+<li>Synchronized可以作用在哪里? 分别通过对象锁和类锁进行举例。</li>
+<li>Synchronized本质上是通过什么保证线程安全的? 分三个方面回答：加锁和释放锁的原理，可重入原理，保证可见性原理。</li>
+<li>Synchronized由什么样的缺陷? Java Lock是怎么弥补这些缺陷的。</li>
+<li>Synchronized和Lock的对比，和选择?</li>
+<li>Synchronized在使用时有何注意事项?</li>
+<li>Synchronized修饰的方法在抛出异常时,会释放锁吗?</li>
+<li>多个线程等待同一个Synchronized锁的时候，JVM如何选择下一个获取锁的线程?</li>
+<li>Synchronized使得同时只有一个线程可以执行，性能比较差，有什么提升的方法?</li>
+<li>我想更加灵活的控制锁的释放和获取(现在释放锁和获取锁的时机都被规定死了)，怎么办?</li>
+<li>什么是锁的升级和降级? 什么是JVM里的偏斜锁、轻量级锁、重量级锁?</li>
+<li>不同的JDK中对Synchronized有何优化?</li>
+</ul>
+<h2 id="使用注意">使用注意</h2>
+<p>在应用<code>Sychronized</code>关键字时需要把握如下注意点：</p>
+<ul>
+<li>一把锁只能同时被一个线程获取，没有获得锁的线程只能等待；</li>
+<li><strong>核心原则</strong>：锁的粒度越小越好，持有时间越短越好！<strong>也就是说尽可能的选择同步代码块，而不是同步方法。</strong></li>
+<li>synchronized(this)、synchronized(非static方法)，意味着每个实例都对应有自己的一把锁,不同实例之间互不影响；synchronized(*.class)、synchronized(static方法)的时候，所有实例公用同一把锁。</li>
+<li>synchronized(非this) 比 synchronized(this) 可以实现更细致的颗粒度。</li>
+<li>synchronized修饰的方法，无论方法正常执行完毕还是抛出异常，最后都会释放锁</li>
+</ul>
+<h2 id="synchronized修饰的目标">synchronized修饰的目标</h2>
+<p>从修饰的目标来分可以分为对象锁、类锁。</p>
+<h3 id="对象锁">对象锁</h3>
+<p>synchronized(非this)、 synchronized(this)、synchronized(非static方法)。</p>
+<h4 id="synchronizedthis-synchronized非static方法-对比">synchronized(this)、synchronized(非static方法) 对比</h4>
+<p>对于一些方法中，可能存在着不需要同步的代码块，那么只需要用synchronized(this)修饰部分需要同步的代码块即可。性能比synchronized(非static方法)，修饰一整个方法好。</p>
+<h4 id="synchronized非this-synchronizedthis-对比">synchronized(非this)、 synchronized(this) 对比</h4>
+<p>如果一个类中有很多个synchronized方法/this，这时虽然能实现同步，但会受到阻塞，只能一个synchronized方法/this执行完再执行另一个，会影响一定的性能；</p>
+<p>但如果使用synchronized(非this)，则 synchronized(非this)代码块 与 synchronized方法/this代码块 是<strong>异步</strong>的。不与其他锁this同步方法争抢this锁，则可以提高运行效率。</p>
+<h3 id="类锁">类锁</h3>
+<h4 id="synchronizedclass-synchronizedstatic方法对比">synchronized(*.class)、synchronized(static方法)对比</h4>
+<p>对于一些方法中，可能存在着不需要同步的代码块，那么只需要用synchronized(*.class)修饰部分需要同步的代码块即可。性能比synchronized(static方法)，修饰一整个方法好。</p>
+<pre><code class="language-java">public class MyClass {
+    // 静态同步方法
+    public static synchronized void staticSyncMethod() {
+        // 使用MyClass.class作为锁
+    }
+
+    // 实例方法中的同步代码块
+    public void instanceMethod() {
+        synchronized(MyClass.class) {
+            // 同样使用MyClass.class作为锁
+        }
+    }
+}
+</code></pre>
+<p>线程A调用<code>staticSyncMethod()</code>时，线程B若尝试进入<code>instanceMethod()</code>的同步块，会被阻塞，反之亦然。</p>
+<p>当 synchronized(static方法)、synchronized(*.class)时，锁的是当前类的 Class 对象，不属于某个对象。当前类的 Class 对象锁被获取，<strong>不影响对象锁的获取</strong>，两者互不影响，本质上是 this 和 Class 的不同。</p>
+<p>由于静态成员变量不专属于任何一个对象，因此通过 Class 锁可以控制静态成员变量的并发操作。</p>
+<p>需要注意的是如果线程 A 调用了一个对象的非静态 synchronized 方法，线程 B 需要调用这个对象所属类的静态 synchronized 方法，<strong>是不会发生互斥/阻塞的</strong>！因为访问静态 synchronized 方法占用的锁是当前类的Class对象，而访问 synchronized(非static方法)占用的锁是当前对象（this）的锁。</p>
+<h3 id="原子性实现加锁和释放锁的原理">原子性实现（加锁和释放锁）的原理</h3>
+<p>原子性，简单的的说就是一个线程在执行过程中不会被其他线程干扰。</p>
+<p>直接看看synchronized修饰的方法、代码块背后的原理。</p>
+<pre><code class="language-java">public void test(Object value){
+        boolean postTask;
+        synchronized (lock) {
+            postTask = pendingData == NOT_SET;
+            pendingData = value;
+        }
+        if (!postTask) {
+            return;
+        }
+        setValue(value);
+	}
+
+public synchronized void setValue(Object value){
+		mData = pendingData;
+		pendingData = NOT_SET;
+}
+
+//反编译结果
+public void test(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)V
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=2, locals=5, args_size=2
+         0: aload_0
+         1: getfield      #7                  // Field lock:Ljava/lang/Object;
+         4: dup
+         5: astore_3
+-------------------------------
+         6: monitorenter
+         7: aload_0
+         8: getfield      #16                 // Field pendingData:Ljava/lang/Object;
+        11: aload_0
+        12: getfield      #13                 // Field NOT_SET:Ljava/lang/Object;
+        15: if_acmpne     22
+        18: iconst_1
+        19: goto          23
+        22: iconst_0
+        23: istore_2
+        24: aload_0
+        25: aload_1
+        26: putfield      #16                 // Field pendingData:Ljava/lang/Object;
+        29: aload_3
+        30: monitorexit
+------------------------------
+        31: goto          41
+        34: astore        4
+        36: aload_3
+------------------------------
+        37: monitorexit
+        38: aload         4
+        40: athrow
+        41: iload_2
+        42: ifne          46
+        45: return
+        46: aload_0
+        47: aload_1
+        48: invokevirtual #19                 // Method setValue:(Ljava/lang/Object;)V
+        51: return
+            
+public synchronized void setValue(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)V
+--------flags: (0x0021) ACC_PUBLIC, ACC_SYNCHRONIZED -------------------
+    Code:
+      stack=2, locals=2, args_size=2
+         0: aload_0
+         1: aload_0
+         2: getfield      #16                 // Field pendingData:Ljava/lang/Object;
+         5: putfield      #23                 // Field mData:Ljava/lang/Object;
+         8: aload_0
+         9: aload_0
+        10: getfield      #13                 // Field NOT_SET:Ljava/lang/Object;
+        13: putfield      #16                 // Field pendingData:Ljava/lang/Object;
+        16: return
+      LineNumberTable:
+        line 20: 0
+        line 21: 8
+        line 22: 16
+</code></pre>
+<p>从反编译的结果来看，JVM对于同步方法和同步代码块的处理方式不同，<strong>对于同步方法，JVM采用<code>ACC_SYNCHRONIZED</code>标记符来实现同步</strong>；<strong>而对于同步代码块，JVM则采用 <code>monitorenter</code>和<code>monitorexit</code> 这两个指令实现同步</strong>。</p>
+<h4 id="acc_synchronized标记符">ACC_SYNCHRONIZED标记符</h4>
+<p>当某个线程要访问某个方法的时候，会检查是否有ACC_SYNCHRONIZED标志，如果有设置，则需要先获得锁，然后开始执行方法，方法执行之后再释放锁。这时如果其他线程来请求执行方法，会因为无法获得锁而被阻断住。值得注意的是，如果在方法执行过程中，发生了异常，并且<strong>方法内部并没有处理该异常</strong>，<strong>那么在异常被抛到方法外面之前监视器锁会被自动释放。</strong></p>
+<h4 id="monitorenter和monitorexit指令">Monitorenter和Monitorexit指令</h4>
+<p>每个对象都存在着一个 <a href="https://zhuanlan.zhihu.com/p/356010805">Monitor</a>对象与之关联。这个Monitor对象也称为<strong>管程</strong>或<strong>监视器锁</strong>。执行 monitorenter 指令就是线程试图去获取 Monitor 的所有权，抢到了就是成功获取锁了；执行 monitorexit 指令则是释放了Monitor的所有权。每一个对象在同一时间只与一个Monitor相关联，而一个monitor在同一时间只能被一个线程获得</p>
+<p>每个Monitor对象有着一个记录着被锁次数的计数器。未被锁定的对象计数器为0，当一个线程获得对象的锁（执行Monitorenter）后，该计数器自增变为 1 ；当<strong>同一个线程</strong>再次获得该对象的锁的时候，计数器再次自增。当同一个线程释放锁（执行Monitorexit指令）的时候，计数器再自减。当<strong>计数器为0的时候，锁将被释放，其他线程便可以获得锁。</strong></p>
+<p>一个线程在尝试获得与这个对象相关联的Monitor的所有权的时候，monitorenter指令会发生如下情况之一：</p>
+<ul>
+<li>计数器为0，意味着目前还没有被获得，那这个线程就会立刻获得然后把锁计数器+1，一旦+1，别的线程再想获取，就需要等待；</li>
+<li>如果这个线程已经拿到了这个锁的所有权，又<strong>重入</strong>了这把锁，那锁计数器就会累加，变成2，并且随着重入的次数，会一直累加；</li>
+<li>这把锁已经被别的线程获取了，等待锁释放；</li>
+</ul>
+<p>什么是可重入？什么是可重入锁？</p>
+<p><strong>可重入</strong>：（来源于维基百科）若一个程序或子程序可以“在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错”，则称其为可重入（reentrant或re-entrant）的。即当该子程序正在运行时，执行线程可以再次进入并执行它，仍然获得符合设计时预期的结果。与多线程并发执行的线程安全不同，可重入强调对单个线程执行时重新进入同一个子程序仍然是安全的。</p>
+<p><strong>可重入锁</strong>：又名递归锁，是指在同一个线程在外层方法获取锁的时候，再进入该线程的内层方法会自动获取锁（前提锁对象得是同一个对象或者同一个class），不会因为之前已经获取过还没释放而阻塞。</p>
+<h4 id="为什么出现了两条-monitorexit-指令">为什么出现了两条 monitorexit 指令？</h4>
+<p>编译器需要确保方法中调用过的每条<code>monitorenter</code>指令都要执行对应的<code>monitorexit</code> 指令。为了保证在方法异常时，<code>monitorenter</code>和<code>monitorexit</code>指令也能正常配对执行。</p>
+<p>编译器会自动产生一个异常处理器，它的目的就是用来执行异常的<code>monitorexit</code>指令。而字节码中多出的<code>monitorexit</code>指令，就是异常结束时，被执行用来释放monitor的，防止出现死锁。</p>
+<h3 id="可见性实现原理">可见性实现原理</h3>
+<p>可见性实现原理依然是通过Monitorenter和Monitorexit指令，或者说其背后的内存屏障。</p>
+<p>monitorenter 与 volatile 读有一样的内存屏障，即在monitorenter之后加入 LoadLoad 和 LoadStore。</p>
+<p>monitorecit 与 volatile 写有一样的内存屏障，在monitorexit之前加入 StoreStore 内存屏障，在monitorexit之后加入 StoreLoad 内存屏障。</p>
+<p><code>monitorenter</code>：加锁。如果缓存失效就前往主内存读取最新数据（被上一个持锁的线程修改后，缓存行失效）。</p>
+<p><code>monitorexit</code>：释放锁。线程在释放锁时，会强制将本地修改的共享变量刷新到主内存，使其他线程能立即看到这些修改。刷新线程本地内存到主内存（如果临界区内 <strong>没有实际修改任何共享变量</strong>，JVM 可能跳过刷新操作以优化性能。对于存在修改的场景，无论修改是否涉及 <code>volatile</code> 变量，都必须强制刷新）</p>
+<pre><code class="language-java">// 共享变量
+int sharedVar = 0;
+Object lock = new Object();
+
+// 线程A
+synchronized (lock) {
+    sharedVar = 42; // 修改共享变量
+} 
+// monitorexit：插入StoreStore+StoreLoad屏障，强制刷新sharedVar到主内存
+
+// 线程B
+synchronized (lock) { 
+    // monitorenter：插入LoadLoad+LoadStore屏障
+    //从主内存读取sharedVar
+    System.out.println(sharedVar); // 输出42
+}
+</code></pre>
+<h3 id="有序性实现原理">有序性实现原理</h3>
+<h4 id="happens-before-规则">Happens-Before 规则</h4>
+<p><code>synchronized</code>内部的代码通过Happens-Before（先行发生）原则的<strong>第一条</strong>确保有序性的实现。</p>
+<p>程序次序规则：<strong>在一个线程内</strong>（很明显synchronized的锁的实现，确保了synchronized修饰的代码块/方法，在一个线程内执行），<strong>按照控制流顺序</strong>，书写在前面的操作先行发生于书写在后面的操作。只是保证了单线程中的程序执行顺序是看起来按照书写顺序的，<strong>CPU/编译器仍然可以对此进行重排，只要依赖关系不发生冲突</strong>，确保有序性的实现。</p>
+<h4 id="内存屏障">内存屏障</h4>
+<p>monitorenter 与 volatile 读有一样的内存屏障，即在操作之后加入 LoadLoad 和 LoadStore，防止后续的普通<strong>读/写</strong>操作被重排序到<code>volatile读</code>之前。</p>
+<p>monitorexit 与 volatile 写有一样的内存屏障，在操作之前加入 StoreStore 内存屏障，在操作之后加入 StoreLoad 内存屏障。防止前面的写被重排序到<code>volatile写</code>之后、后续的读操作被重排序到<code>volatile写</code>之前。</p>
+<h4 id="注意-2">注意</h4>
+<p>内存屏障是针对于整个代码块的，也就是说<code>synchronized</code>代码块外，虽然能够保证有序性，但是synchronized`代码块内是<strong>无法禁止指令重排和处理器优化的</strong>，即使有着Happens-Before确保也一样。</p>
+<h1 id="final">final</h1>
+<p>//TODO</p>
+<h1 id="juc">JUC</h1>
+<p>//TODO</p>
+<h1 id="注意-3">注意</h1>
+<p>JAVA多线程和并发的一些问题 帮助理解</p>
+<p>https://www.cnblogs.com/dolphin0520/p/3932934.html</p>
+<h1 id="参考">参考</h1>
+<blockquote>
+<p>https://www.cnblogs.com/dolphin0520/p/3920373.html</p>
+<p>https://www.cnblogs.com/cswiki/p/14747524.html</p>
+<p>https://pdai.tech/md/java/thread/java-thread-x-key-volatile.html</p>
+<p>https://juejin.cn/post/7212101193437724728#heading-6</p>
+<p>https://ylgrgyq.com/memory-barrier.html</p>
+<p>https://www.zhihu.com/question/289712546/answer/2451481994</p>
+<p>https://juejin.cn/post/6844904144273145863</p>
+<p>https://gist.github.com/yulewei/1e72eea56f7075573c73a2624fe94578</p>
+<p>https://mp.weixin.qq.com/s/zvBxfVrB7czS7qU5SW_n7Q</p>
+</blockquote>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E8%83%8C%E6%99%AF">背景</a></li>
+<li><a href="#%E5%A4%9A%E7%BA%BF%E7%A8%8B%E7%9A%84%E4%B8%89%E5%A4%A7%E6%A0%B8%E5%BF%83%E9%97%AE%E9%A2%98">多线程的三大核心问题</a></li>
+<li><a href="#happens-before%E5%85%88%E8%A1%8C%E5%8F%91%E7%94%9F%E5%8E%9F%E5%88%99">Happens-Before（先行发生）原则</a>
+<ul>
+<li><a href="#%E5%AE%9A%E4%B9%89">定义</a></li>
+<li><a href="#%E6%B3%A8%E6%84%8F">注意</a></li>
+</ul>
+</li>
+<li><a href="#volatile%E6%98%93%E6%8C%A5%E5%8F%91%E7%9A%84">volatile（易挥发的）</a>
+<ul>
+<li><a href="#%E4%BD%9C%E7%94%A8">作用</a></li>
+<li><a href="#%E6%95%88%E6%9E%9C">效果</a></li>
+<li><a href="#volatile-%E5%8F%AF%E8%A7%81%E6%80%A7%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86">volatile 可见性实现原理</a>
+<ul>
+<li><a href="#linux-x86">Linux  x86</a></li>
+<li><a href="#linux-arm">Linux  ARM</a></li>
+</ul>
+</li>
+<li><a href="#volatile-%E6%9C%89%E5%BA%8F%E6%80%A7%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86">volatile 有序性实现原理</a>
+<ul>
+<li><a href="#%E7%A1%AC%E4%BB%B6%E5%B1%82%E9%9D%A2%E7%9A%84%E5%86%85%E5%AD%98%E5%B1%8F%E9%9A%9C">硬件层面的内存屏障</a></li>
+<li><a href="#jvm%E5%B1%82%E9%9D%A2%E7%9A%84%E5%86%85%E5%AD%98%E5%B1%8F%E9%9A%9C">JVM层面的内存屏障</a></li>
+<li><a href="#jvm%E5%AF%B9volatile%E7%9A%84%E6%8F%92%E5%85%A5%E5%B1%8F%E9%9A%9C%E7%AD%96%E7%95%A5">JVM对volatile的插入屏障策略</a>
+<ul>
+<li><a href="#linux-x86-2">Linux  x86</a></li>
+<li><a href="#linux-arm-2">Linux  ARM</a></li>
+</ul>
+</li>
+<li><a href="#volatile%E7%A6%81%E6%AD%A2%E9%87%8D%E6%8E%92%E5%BA%8F%E5%9C%BA%E6%99%AF">volatile禁止重排序场景</a></li>
+</ul>
+</li>
+<li><a href="#%E7%A6%81%E6%AD%A2%E4%BD%BF%E7%94%A8volatile%E7%9A%84%E6%9D%A1%E4%BB%B6">禁止使用volatile的条件</a>
+<ul>
+<li><a href="#%E5%9C%A8%E9%9C%80%E8%A6%81%E5%8E%9F%E5%AD%90%E6%80%A7%E6%97%B6%E4%B8%8D%E5%8F%AF%E4%BB%A5%E4%BB%85%E4%BD%BF%E7%94%A8volatile">在需要原子性时不可以仅使用volatile</a></li>
+<li><a href="#%E5%AF%B9%E5%8F%98%E9%87%8F%E7%9A%84%E5%86%99%E6%93%8D%E4%BD%9C%E4%BE%9D%E8%B5%96%E4%BA%8E%E5%BD%93%E5%89%8D%E5%80%BC">对变量的写操作依赖于当前值</a></li>
+<li><a href="#%E8%AF%A5%E5%8F%98%E9%87%8F%E5%8C%85%E5%90%AB%E5%9C%A8%E6%9C%89%E5%85%B6%E4%BB%96%E5%8F%98%E9%87%8F%E5%8F%82%E4%B8%8E%E7%9A%84%E4%B8%8D%E5%8F%98%E5%BC%8F%E4%B8%AD">该变量包含在有其他变量参与的不变式中</a></li>
+</ul>
+</li>
+<li><a href="#%E5%B8%B8%E4%BD%BF%E7%94%A8volatile%E7%9A%84%E5%9C%BA%E6%99%AF">常使用volatile的场景</a>
+<ul>
+<li><a href="#%E7%8A%B6%E6%80%81%E6%A0%87%E5%BF%97">状态标志</a></li>
+<li><a href="#%E5%AE%89%E5%85%A8%E5%8F%91%E5%B8%83%E5%AF%B9%E8%B1%A1">安全发布对象</a></li>
+<li><a href="#%E8%A7%82%E5%AF%9F%E8%80%85%E6%A8%A1%E5%BC%8F">观察者模式</a></li>
+<li><a href="#%E8%AF%BB%E5%A4%9A%E5%86%99%E5%B0%91%E7%9A%84%E8%AE%A1%E6%95%B0%E5%99%A8">读多写少的计数器</a></li>
+<li><a href="#%E4%B8%80%E6%AC%A1%E6%80%A7%E7%8A%B6%E6%80%81%E5%88%9D%E5%A7%8B%E5%8C%96">一次性状态初始化</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#synchronized-%CB%88s%C9%AA%C5%8Bkr%C9%99n%CA%8C%C9%AAz">synchronized （/ˈsɪŋkrənʌɪz/）</a>
+<ul>
+<li><a href="#%E4%BD%BF%E7%94%A8%E6%B3%A8%E6%84%8F">使用注意</a></li>
+<li><a href="#synchronized%E4%BF%AE%E9%A5%B0%E7%9A%84%E7%9B%AE%E6%A0%87">synchronized修饰的目标</a>
+<ul>
+<li><a href="#%E5%AF%B9%E8%B1%A1%E9%94%81">对象锁</a>
+<ul>
+<li><a href="#synchronizedthis-synchronized%E9%9D%9Estatic%E6%96%B9%E6%B3%95-%E5%AF%B9%E6%AF%94">synchronized(this)、synchronized(非static方法) 对比</a></li>
+<li><a href="#synchronized%E9%9D%9Ethis-synchronizedthis-%E5%AF%B9%E6%AF%94">synchronized(非this)、 synchronized(this) 对比</a></li>
+</ul>
+</li>
+<li><a href="#%E7%B1%BB%E9%94%81">类锁</a>
+<ul>
+<li><a href="#synchronizedclass-synchronizedstatic%E6%96%B9%E6%B3%95%E5%AF%B9%E6%AF%94">synchronized(*.class)、synchronized(static方法)对比</a></li>
+</ul>
+</li>
+<li><a href="#%E5%8E%9F%E5%AD%90%E6%80%A7%E5%AE%9E%E7%8E%B0%E5%8A%A0%E9%94%81%E5%92%8C%E9%87%8A%E6%94%BE%E9%94%81%E7%9A%84%E5%8E%9F%E7%90%86">原子性实现（加锁和释放锁）的原理</a>
+<ul>
+<li><a href="#acc_synchronized%E6%A0%87%E8%AE%B0%E7%AC%A6">ACC_SYNCHRONIZED标记符</a></li>
+<li><a href="#monitorenter%E5%92%8Cmonitorexit%E6%8C%87%E4%BB%A4">Monitorenter和Monitorexit指令</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E5%87%BA%E7%8E%B0%E4%BA%86%E4%B8%A4%E6%9D%A1-monitorexit-%E6%8C%87%E4%BB%A4">为什么出现了两条 monitorexit 指令？</a></li>
+</ul>
+</li>
+<li><a href="#%E5%8F%AF%E8%A7%81%E6%80%A7%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86">可见性实现原理</a></li>
+<li><a href="#%E6%9C%89%E5%BA%8F%E6%80%A7%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86">有序性实现原理</a>
+<ul>
+<li><a href="#happens-before-%E8%A7%84%E5%88%99">Happens-Before 规则</a></li>
+<li><a href="#%E5%86%85%E5%AD%98%E5%B1%8F%E9%9A%9C">内存屏障</a></li>
+<li><a href="#%E6%B3%A8%E6%84%8F-2">注意</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#final">final</a></li>
+<li><a href="#juc">JUC</a></li>
+<li><a href="#%E6%B3%A8%E6%84%8F-3">注意</a></li>
+<li><a href="#%E5%8F%82%E8%80%83">参考</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://kanyewestforreal.github.io/post/android-jetpack1-lifecycle-p1/">
+              <h3 class="post-title">
+                Android Jetpack(1) Lifecycle源码阅读记录——P1
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  This blog is just for me to record the questions, which in my developing.
+  <div class="footer-right">
+    <a class="rss" href="https://kanyewestforreal.github.io//atom.xml" target="_blank">
+      <i class="ri-rss-line"></i> RSS
+    </a>
+    <span id="busuanzi_container_site_pv" style="margin-top: 8px;">
+      本站总访问量<span id="busuanzi_value_site_pv"></span>次
+    </span>
+  </div>
+  <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      // hljs.initHighlightingOnLoad()
+
+      // let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // // This should probably be throttled.
+      // // Especially because it triggers during smooth scrolling.
+      // // https://lodash.com/docs/4.17.10#throttle
+      // // You could do like...
+      // // window.addEventListener("scroll", () => {
+      // //    _.throttle(doThatStuff, 100);
+      // // });
+      // // Only not doing it here to keep this Pen dependency-free.
+
+      // window.addEventListener("scroll", event => {
+      //   let fromTop = window.scrollY;
+
+      //   mainNavLinks.forEach((link, index) => {
+      //     let section = document.getElementById(decodeURI(link.hash).substring(1));
+      //     let nextSection = null
+      //     if (mainNavLinks[index + 1]) {
+      //       nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+      //     }
+      //     if (section.offsetTop <= fromTop) {
+      //       if (nextSection) {
+      //         if (nextSection.offsetTop > fromTop) {
+      //           link.classList.add("current");
+      //         } else {
+      //           link.classList.remove("current");    
+      //         }
+      //       } else {
+      //         link.classList.add("current");
+      //       }
+      //     } else {
+      //       link.classList.remove("current");
+      //     }
+      //   });
+      // });
+
+    </script>
+  </body>
+</html>
