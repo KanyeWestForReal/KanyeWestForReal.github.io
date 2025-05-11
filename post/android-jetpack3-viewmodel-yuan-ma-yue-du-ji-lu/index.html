@@ -1,0 +1,576 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Android Jetpack(3)  SaveStateHandle源码阅读记录 | Grinofith&#39;s Blog</title>
+<link rel="shortcut icon" href="https://kanyewestforreal.github.io//favicon.ico?v=1746980034256">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://kanyewestforreal.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Android Jetpack(3)  SaveStateHandle源码阅读记录 | Grinofith&#39;s Blog - Atom Feed" href="https://kanyewestforreal.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="本篇算是对接下来的ViewModel源码阅读的前置。
+发现问题
+由于移动端的本身的机型大小限制，注定了移动端可使用内存要比台式机少，因此移动端的系统，就必须注意内存不足这个问题，如何“带着锁拷跳舞”，让用户拥有足够良好的体验，这也成为And..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <!-- <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script> -->
+    <script src="//cdn.jsdelivr.net/npm/leancloud-storage@4.13.2/dist/av-min.js"></script>
+    <script src="/media/js/read_mark.js"></script>
+    <script src="/media/js/highlight/highlight.min.js"></script>
+    <script src="/media/js/sroll_markdown_titile_list.js"></script>
+    <link rel="stylesheet" type="text/css" href="/media/js/highlight/styles/atom-one-dark.css">
+    <script>hljs.highlightAll();</script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://kanyewestforreal.github.io/">
+  <img class="avatar" src="https://kanyewestforreal.github.io//images/avatar.png?v=1746980034256" alt="">
+  </a>
+  <h1 class="site-title">
+    Grinofith&#39;s Blog
+  </h1>
+  <p class="site-description">
+    The key is seriously reflecting.
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Android Jetpack(3)  SaveStateHandle源码阅读记录
+            </h2>
+            <div class="post-info">
+              <span>
+                2025-03-24
+              </span>
+              <span class="post-views">
+                  <span >阅读量：</span>
+                  <span id="dynamic-views-counter"></span>
+              </span>
+              <span>
+                14 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>本篇算是对接下来的<code>ViewModel</code>源码阅读的前置。</p>
+<h1 id="发现问题">发现问题</h1>
+<p>由于移动端的本身的机型大小限制，注定了移动端可使用内存要比台式机少，因此移动端的系统，就必须注意<strong>内存不足</strong>这个问题，如何“带着锁拷跳舞”，让用户拥有足够良好的体验，这也成为Android系统的必修课。</p>
+<blockquote>
+<p>如果您的应用具有缓存的进程且保留了目前不需要的资源，那么即使用户未使用您的应用，它也会影响系统的整体性能。当系统资源（如内存）不足时，它将会终止缓存中的进程。系统还会考虑终止占用最多内存的进程以释放 RAM。</p>
+<p>https://developer.android.com/topic/performance/memory-overview?hl=zh-cn</p>
+</blockquote>
+<p>当系统因为内存不足，而不得不终止用户临时不使用的程序时，究竟应该如何保证用户的体验？</p>
+<p>比如，在编写上百字的长评论/小作文时，突然接收到推销电话，这时候切换出去，因为内存原因，系统不得不终止该程序，那么上百字的小作文何去何从？</p>
+<p>当系统因为电量不足，程序意外关闭的场景时，这时候还没有发布的小作文该怎么办？</p>
+<p>既然需要优化用户的体验，那么保存界面状态，就成为了一个值得探讨的话题。</p>
+<p>什么时候保存状态？用什么保存界面状态？</p>
+<h1 id="解决思路">解决思路</h1>
+<h2 id="什么时候保存状态">什么时候保存状态</h2>
+<p>可以划分为两种场景。</p>
+<h3 id="用户发起的界面状态解除">用户发起的界面状态解除</h3>
+<ul>
+<li>从“概览”（“最近使用的应用”）屏幕中滑动关闭 activity。</li>
+<li>主动退出（如用户按返回键）</li>
+<li>从“设置”屏幕中终止或强制退出应用。</li>
+<li>重新启动设备。</li>
+<li>完成某种“完成”操作（由 <code>Activity.finish()</code> 提供支持）。</li>
+</ul>
+<p>针对以上这些状态，可以认为无需保存状态，或者数据需通过持久化存储管理。</p>
+<h3 id="系统发起的界面状态解除">系统发起的界面状态解除</h3>
+<ul>
+<li>配置更改（如屏幕旋转）：系统重建 <code>Activity</code>，需临时保存数据以便快速恢复。</li>
+<li>异常退出（如内存回收）：系统终止进程，需临时保存数据或持久化关键数据。</li>
+</ul>
+<h1 id="解决方案">解决方案</h1>
+<h2 id="用什么保存界面状态">用什么保存界面状态？</h2>
+<h3 id="临时保存方案">临时保存方案</h3>
+<ul>
+<li>
+<p><strong>(1) <code>onSaveInstanceState</code> 与 Bundle</strong></p>
+<ul>
+<li>
+<p><strong>作用</strong>：保存轻量级数据（如文本输入、控件状态）到<strong>内存</strong>，适用于异常退出或配置更改后的恢复。</p>
+</li>
+<li>
+<p><strong>实现</strong>：</p>
+<pre><code class="language-kotlin">override fun onSaveInstanceState(outState: Bundle) {
+	outState.putString(&quot;text_key&quot;, textView.text.toString())
+    super.onSaveInstanceState(outState)
+}
+
+override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    val savedText = savedInstanceState?.getString(&quot;text_key&quot;)
+    textView.text = savedText
+}
+</code></pre>
+</li>
+<li>
+<p><strong>限制</strong>：仅适合小数据（1MB以内，可能由于设备不同有变化），复杂对象需序列化，由于<code>Binder</code>的原因对性能有一定影响。</p>
+</li>
+<li>
+<p><strong>场景</strong>：适用于<strong>配置更改</strong>和<strong>系统发起的进程终止</strong>的情况。</p>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>(2) <code>ViewModel</code></strong>（<code>onRetainNonConfigurationInstance</code>方法的实现）</p>
+<ul>
+<li><strong>作用</strong>：保留内存中的数据（如网络请求结果、复杂对象），避免重复加载。</li>
+<li><strong>优势</strong>：生命周期独立于 Activity，自动管理数据保留与清理。</li>
+<li><strong>实现</strong>：本质上是调用<code>onRetainNonConfigurationInstance</code>方法，只在配置发生改变时被调用，但是对数据大小、类型都不做限制（如果配合<code>SavedStateHandle</code>则没有该特性），也是保存于内存中。</li>
+<li><strong>场景</strong>：仅适用于<strong>配置更改</strong>时，系统发起的进程终止依然会导致<code>ViewModel</code>实例销毁</li>
+</ul>
+</li>
+<li>
+<p><strong>(3) <code>SavedStateHandle</code></strong></p>
+<ul>
+<li>
+<p><strong>作用</strong>：将 <code>ViewModel</code> 与 <code>onSaveInstanceState</code> 结合，通过键值对保存状态。</p>
+</li>
+<li>
+<p><strong>限制</strong>：本质上是通过<code>onSaveInstanceState</code> 与 <code>Bundle</code>的实现，仅适合小数据（1MB以内，可能由于设备不同有变化），复杂对象需序列化，由于<code>Binder</code>的原因对性能有一定影响。</p>
+</li>
+<li>
+<p><strong>场景</strong>：适用于<strong>配置更改</strong>和<strong>系统发起的进程终止</strong>的情况。</p>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="持久化保存方案">持久化保存方案</h3>
+<ul>
+<li>本地数据库（Room）：保存结构化数据（如用户设置、列表数据）。</li>
+<li><code>SharedPreferences</code>/ MMKV：存储简单键值对（如用户偏好）。</li>
+<li>文件存储：保存大型数据（如图片、文档）。</li>
+</ul>
+<h2 id="配置更改的特殊处理">配置更改的特殊处理</h2>
+<ul>
+<li><strong><code>android:configChanges</code></strong>
+<ul>
+<li><strong>作用</strong>：声明 Activity 自行处理配置更改（如屏幕旋转、屏幕尺寸发生变更），避免重建。</li>
+<li><strong>示例</strong>：<code>android:configChanges=&quot;orientation|screenSize&quot;</code></li>
+<li><strong>风险</strong>：需手动更新布局，可能引入兼容性问题，官方不推荐过度使用</li>
+</ul>
+</li>
+</ul>
+<h2 id="总结">总结</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align:left"></th>
+<th style="text-align:left">ViewModel</th>
+<th style="text-align:left">保存的实例状态</th>
+<th>永久性存储空间</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">存储位置</td>
+<td style="text-align:left">在内存中</td>
+<td style="text-align:left">在内存中</td>
+<td>在磁盘或网络上</td>
+</tr>
+<tr>
+<td style="text-align:left">在配置更改后继续存在</td>
+<td style="text-align:left">是</td>
+<td style="text-align:left">是</td>
+<td>是</td>
+</tr>
+<tr>
+<td style="text-align:left">在系统发起的进程终止后继续存在</td>
+<td style="text-align:left">否</td>
+<td style="text-align:left">是</td>
+<td>是</td>
+</tr>
+<tr>
+<td style="text-align:left">在用户完全关闭 activity 或触发 onFinish() 后继续存在</td>
+<td style="text-align:left">否</td>
+<td style="text-align:left">否</td>
+<td>是</td>
+</tr>
+<tr>
+<td style="text-align:left">数据限制</td>
+<td style="text-align:left">支持复杂对象，大小不受限制</td>
+<td style="text-align:left">仅适用于基元类型和简单的小对象，例如字符串</td>
+<td>仅受限于磁盘空间或从网络资源检索的成本/时间</td>
+</tr>
+<tr>
+<td style="text-align:left">读取/写入时间</td>
+<td style="text-align:left">快（仅限内存访问）</td>
+<td style="text-align:left">慢（需要序列化/反序列化）</td>
+<td>慢（需要磁盘访问或网络事务）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>注意</strong>：上表中的<code>保存的实例状态</code>是包括 <code>onSaveInstanceState()</code> 和 <code>rememberSaveable</code> API，以及 <code>SavedStateHandle</code>（作为 <code>ViewModel</code> 的一部分）。即如果<code>ViewModel</code>使用<code>SavedStateHandle</code>则归于<code>保存的实例状态</code>类。</p>
+<blockquote>
+<p>https://developer.android.com/topic/libraries/architecture/saving-states?hl=zh-cn#options</p>
+</blockquote>
+<p>明显的能够看见<code>SavedStateHandle</code>的出现，很好的处理了<strong>配置更改</strong>和<strong>系统发起的进程终止</strong>这两者情况，那么也正如标题一般，接下来的目标就是去了解<code>SavedStateHandle</code>这个组件。</p>
+<h2 id="核心类">核心类</h2>
+<table>
+<thead>
+<tr>
+<th>类名</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SavedStateHandle</code></td>
+<td>核心类，封装了状态数据的保存与恢复逻辑，提供键值对存储，支持通过<code>LiveData</code>、<code>StateFlow</code>保存、获取状态。属于<code>ViewModel</code>级状态保存类。</td>
+</tr>
+<tr>
+<td><code>SavedStateRegistry</code></td>
+<td>由<code>Activity/Fragment</code>持有，管理所有注册的<code>SavedStateHandleProvider</code>，执行<code>恢复Bundle</code>、<code>保存所有注册的SavedStateHandleProvider为Bundle</code>的功能。属于系统级状态保存类。一个<code>Registry</code>可以管理多个<code>ViewModel</code>的<code>SavedStateHandle</code>，以及其中的SSP。</td>
+</tr>
+<tr>
+<td><code>SavedStateProvider</code></td>
+<td>接口，作为状态提供者，定义<code>saveState()</code>方法：需要将数据保存到Bundle，然后返回这个Bundle。<br />其子类有<code>SavedStateHandlesProvider</code>、<code>Recreator.SavedStateProvider</code>。</td>
+</tr>
+<tr>
+<td><code>SavedStateRegistryOwner</code></td>
+<td>接口。由<code>ComponentActivity</code>/<code>Fragment</code>实现，要求能够提供<code>SavedStateRegistry</code>访问。</td>
+</tr>
+<tr>
+<td><code>SavedStateRegistryController</code></td>
+<td>属于<code>SavedStateRegistry</code>的外观/包装类。通过订阅<code>SavedStateRegistryOwner</code>的生命周期事件，保证<code>SavedStateRegistry</code>的初始化<code>performAttach</code>、状态保存Save、恢复Restore方法在合适的<code>Owenr</code>的生命周期执行。<br />同时初始化<code>Recreator</code>，使得其能在<code>onCreate</code>时进行按照类名单重建实例。</td>
+</tr>
+<tr>
+<td><code>SavedStateHandleController</code></td>
+<td>辅助类，创建时接受一个<code>Key</code>、<code>SavedStateHandle</code>。<br />同时，实现<code>LifecycleEventObserver</code>接口，接收<code>SavedStateRegistryOwner</code>生命周期的事件，从而保证内存不泄露。<br /><code>attachToLifecycle</code>时将<code>SavedStateHandle#savedStateProvider()</code>注册到<code>SavedStateRegistry</code>。</td>
+</tr>
+<tr>
+<td><code>LegacySavedStateHandleController</code></td>
+<td>工具类，辅助<code>SavedStateHandleController</code>的创建：使得<code>attachToLifecycle</code>，使得<code>刚创建的SavedStateHanlde</code>能够注册到<code>Controller</code>，再返回<code>Controller</code>给创建<code>ViewModel的工厂Factory</code>；顺便把<code>OnRecreation</code>加入重建名单。（<strong>不使用<code>CreationExtras</code>创建<code>ViewModel</code>创建，会使用这个类</strong>）</td>
+</tr>
+<tr>
+<td><code>SavedStateHandleSupport</code></td>
+<td>辅助类。通过<code>enableSavedStateHandles</code>启动。所有<code>SavedStateHandle</code>创建时都会保存到<code>Owner#savedStateHandlesVM</code>，可以通过Key获取复用。（注意<code>savedStateHandlesVM</code>虽然没有<code>SavedStateHandle</code>作为构造参数，但是在系统杀死进程后仍然可以重新恢复数据，见下）</td>
+</tr>
+<tr>
+<td><code>SavedStateHandlesProvider</code></td>
+<td>打包器。继承<code>SavedStateProvider</code>。保证<code>savedStateHandlesVM</code>被杀死后，能够恢复<code>SavedStateHandle</code>的类。其<code>saveState()</code>方法是调用<code>savedStateHandlesVM</code>中所有SavedStateProvider的<code>saveState()</code>，打包成一个Bundle，以供下次恢复。</td>
+</tr>
+<tr>
+<td><code>AutoRecreated</code></td>
+<td>接口。如果一个类需要通过<code>Recreator</code>实现重建，那么需要实现这个接口。</td>
+</tr>
+<tr>
+<td><code>Recreator</code></td>
+<td>重建器。实现<code>LifecycleEventObserver</code>接口，能够在<code>onCreate</code>阶段时，通过获取<code>SavedStateRegistry</code>保存的<code>Bundle</code>，得到之前已注册的，需要重建的类名单，从而重建实例（要求有无参构造函数）。（<strong>不使用<code>CreationExtras</code>创建<code>ViewModel</code>创建，会使用这个类，即使使用<code>CreationExtras</code>，这个类也会必然运行，算是默认开启的</strong>）</td>
+</tr>
+<tr>
+<td><code>OnRecreation</code></td>
+<td>辅助类，实现<code>AutoRecreated</code>接口，<code>OnRecreation</code>正是在<code>Recreator</code>的重建名单上。<br />重建时，负责进行<code>attachToLifecycle</code>，使得所有<code>ViewModel的SavedStateHanlde</code>能够再次注册到<code>SavedStateHandleController</code>上。<br />同时调用<code>Registry.runOnNextRecreation</code>继续把本身放入需要重建的类名单，以维持循环。（<strong>不使用<code>CreationExtras</code>创建<code>ViewModel</code>创建，会使用这个类</strong>）</td>
+</tr>
+<tr>
+<td><code>Recreator.SavedStateProvider</code></td>
+<td>打包器。实现<code>SavedStateRegistry.SavedStateProvider</code>，<code>saveState()</code>保存的是需要重建的类名单。（<strong>不使用<code>CreationExtras</code>创建<code>ViewModel</code>创建，会使用这个类，即使使用<code>CreationExtras</code>，这个类也会必然运行，算是默认开启的</strong>）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="关键流程时序图">关键流程/时序图</h2>
+<img src="C:\Users\Soloman\Desktop\ss-5.png" alt="ss-5" style="zoom:150%;" />
+<img src="C:\Users\Soloman\Desktop\ss-4.png" alt="ss-4" style="zoom:150%;" />
+<img src="C:\Users\Soloman\Desktop\ss-3.png" alt="ss-3" style="zoom:150%;" />
+<img src="C:\Users\Soloman\Desktop\ss-1.png" alt="ss-1" style="zoom:150%;" />
+<img src="C:\Users\Soloman\Desktop\ss-2.png" alt="ss-2" style="zoom:150%;" />
+<h1 id="注意">注意</h1>
+<h2 id="savedstatehandle-的核心作用是什么适用场所是什么">SavedStateHandle 的核心作用是什么？适用场所是什么？</h2>
+<h2 id="savedstatehandle-内部如何存储数据">SavedStateHandle 内部如何存储数据？</h2>
+<h2 id="底层数据结构是什么">底层数据结构是什么？</h2>
+<h2 id="它与-bundle-的关系是什么">它与 Bundle 的关系是什么？</h2>
+<h2 id="savedstatehandle-支持保存哪些数据类型不支持的类型如何处理">SavedStateHandle 支持保存哪些数据类型？不支持的类型如何处理？</h2>
+<h2 id="如果需要在-savedstatehandle-中保存一个不可变数据类immutable-data-class最佳实践是什么">如果需要在 SavedStateHandle 中保存一个不可变数据类（immutable data class），最佳实践是什么？</h2>
+<h2 id="savedstatehandle-的数据是如何序列化到-bundle-中的">SavedStateHandle 的数据是如何序列化到 Bundle 中的？</h2>
+<h2 id="bundle-的序列化反序列化过程对性能有何影响">Bundle 的序列化/反序列化过程对性能有何影响？</h2>
+<h2 id="反序列化时如何处理类型安全">反序列化时如何处理类型安全？</h2>
+<p>（源码分析：<code>HashMap&lt;String, Object&gt;</code> 和 <code>Bundle</code> 的转换逻辑）</p>
+<p>（考察对状态保存机制的基本理解）</p>
+<p>（源码中的 <code>Bundle</code> 读写逻辑，<code>get()</code>/<code>set()</code> 方法实现）</p>
+<p>（结合 Kotlin 的 <code>@Parcelize</code> 或自定义 Parcelable 实现）</p>
+<p>（基本类型、Parcelable、Serializable 等，以及自定义解决方案）</p>
+<h2 id="当-activityfragment-被系统销毁重建时savedstatehandle-如何保证数据不丢失">当 Activity/Fragment 被系统销毁重建时，SavedStateHandle 如何保证数据不丢失？</h2>
+<p>（与 <code>SavedStateRegistry</code> 的关联及自动恢复机制）</p>
+<h2 id="savedstatehandle-的数据何时被保存何时被清除">SavedStateHandle 的数据何时被保存？何时被清除？</h2>
+<p>（关联 <code>onSaveInstanceState</code> 和 <code>ViewModel</code> 的生命周期）</p>
+<h2 id="savedstateregistry-的作用是什么它是如何与-savedstatehandle-关联的">SavedStateRegistry 的作用是什么？它是如何与 SavedStateHandle 关联的？</h2>
+<p>（跟踪 <code>ComponentActivity</code> 或 <code>Fragment</code> 中的注册流程）</p>
+<h2 id="savedstateprovider-接口的设计目的是什么savedstatehandle-如何实现该接口">SavedStateProvider 接口的设计目的是什么？SavedStateHandle 如何实现该接口？</h2>
+<p>（源码中的 <code>SavedStateHandle.SavingStateLiveData</code> 和 <code>saveState()</code> 方法）</p>
+<h2 id="savedstateviewmodelfactory-类在-savedstatehandle-的创建过程中扮演什么角色">SavedStateViewModelFactory 类在 SavedStateHandle 的创建过程中扮演什么角色？</h2>
+<p>（分析 <code>create()</code> 方法中如何注入 <code>SavedStateHandle</code>）</p>
+<h2 id="savedstatehandlecontroller-的作用是什么它是如何协调-viewmodel-和-savedstateregistry-的">SavedStateHandleController 的作用是什么？它是如何协调 ViewModel 和 SavedStateRegistry 的？</h2>
+<p>（源码中的 <code>attachToSavedStateRegistry</code> 和 <code>performRestore</code> 方法）</p>
+<h2 id="savedstateregistrycontroller的作用是什么它是如何协调-viewmodel-和-savedstateregistry-的">SavedStateRegistryController的作用是什么？它是如何协调 ViewModel 和 SavedStateRegistry 的？</h2>
+<h2 id="savedstatehandlesprovider的作用是什么与savedstatehandleprovider的关系">SavedStateHandlesProvider的作用是什么？与SavedStateHandleProvider的关系？</h2>
+<h2 id="savedstateregistry-的-performsave-和-performrestore-方法的调用时机是什么">SavedStateRegistry 的 performSave() 和 performRestore() 方法的调用时机是什么？</h2>
+<p>（关联 <code>Activity</code> 的 <code>onSaveInstanceState</code> 和 <code>onCreate</code> 生命周期）</p>
+<h2 id="当-viewmodel-被清除时savedstatehandle-的数据如何被回收是否存在内存泄漏风险">当 ViewModel 被清除时，SavedStateHandle 的数据如何被回收？是否存在内存泄漏风险？</h2>
+<p>（分析 <code>ViewModel</code> 的 <code>onCleared()</code> 方法与数据清理机制）</p>
+<h2 id="savedstatehandle-如何处理动态注册的组件如动态添加的-fragment的状态保存">SavedStateHandle 如何处理动态注册的组件（如动态添加的 Fragment）的状态保存？</h2>
+<p>（源码中的 <code>components</code> 集合与迭代器逻辑）</p>
+<h2 id="为什么-savedstatehandle-的-livedata-在恢复时会立即触发数据更新底层如何实现">为什么 SavedStateHandle 的 LiveData 在恢复时会立即触发数据更新？底层如何实现？</h2>
+<p>（分析 <code>SavedStateHandle.SavingStateLiveData</code> 的 <code>restoreState()</code> 方法）</p>
+<h2 id="savedstatehandle-如何利用观察者模式实现数据变化监听">SavedStateHandle 如何利用观察者模式实现数据变化监听？</h2>
+<p>（源码中的 <code>LiveData</code> 和 <code>MutableLiveData</code> 的封装）</p>
+<h2 id="savedstatehandle-如何通过代理模式简化-livedata-的存取">SavedStateHandle 如何通过代理模式简化 LiveData 的存取？</h2>
+<p>（源码中的 <code>getLiveData()</code> 方法实现与 <code>MutableLiveData</code> 的懒加载）</p>
+<h2 id="为什么-savedstatehandle-的-bundle-不直接暴露给开发者这种设计有什么优势">为什么 SavedStateHandle 的 Bundle 不直接暴露给开发者？这种设计有什么优势？</h2>
+<p>（封装性、类型安全与避免误操作）</p>
+<h2 id="当多个-viewmodel-共享同一个-savedstatehandle-时如何避免键名冲突源码中有何防护措施">当多个 ViewModel 共享同一个 SavedStateHandle 时，如何避免键名冲突？源码中有何防护措施？</h2>
+<p>（分析键名的命名空间隔离机制或缺失）</p>
+<h2 id="如果在-savedstatehandle-中保存了一个匿名内部类对象会引发什么问题源码如何规避">如果在 SavedStateHandle 中保存了一个匿名内部类对象，会引发什么问题？源码如何规避？</h2>
+<p>（<code>Bundle</code> 的序列化限制与 <code>ClassNotFoundException</code> 风险）</p>
+<h2 id="savedstatehandle-如何处理进程被杀死后数据的恢复与-onsaveinstancestate-的差异是什么">SavedStateHandle 如何处理进程被杀死后数据的恢复？与 <code>onSaveInstanceState</code> 的差异是什么？</h2>
+<p>（源码依赖的 <code>SavedStateRegistry</code> 恢复机制与进程死亡场景的不可恢复性）</p>
+<p>当组件（如 Fragment）被移除但 <code>SavedStateHandle</code> 中仍保留其状态时，如何避免数据冗余？<br>
+（源码中的 <code>components</code> 清理逻辑或潜在的内存泄漏点）</p>
+<h2 id="savedstatehandle-的-getlivedatakey-方法为何返回一个特殊的livedata-对象它的-mregular-和-msavedstate-字段有何作用">SavedStateHandle 的 getLiveData(key) 方法为何返回一个特殊的LiveData 对象？它的 mRegular 和 mSavedState 字段有何作用？</h2>
+<p>（分析 <code>SavingStateLiveData</code> 的双层数据源设计）</p>
+<h2 id="savedstateregistry-的-performsave-方法为何要合并-restoredstate-和当前状态源码中如何实现覆盖逻辑">SavedStateRegistry 的 performSave() 方法为何要合并 restoredState 和当前状态？源码中如何实现覆盖逻辑？</h2>
+<p>（分析 <code>Bundle.putAll()</code> 和迭代器遍历的顺序优先级）</p>
+<h2 id="如果自定义一个-viewmodel-工厂如何手动将-savedstatehandle-注入到-viewmodel-中请结合源码说明关键步骤">如果自定义一个 ViewModel 工厂，如何手动将 SavedStateHandle 注入到 ViewModel 中？请结合源码说明关键步骤。</h2>
+<p>（参考 <code>AbstractSavedStateViewModelFactory</code> 的 <code>create()</code> 方法实现）</p>
+<h2 id="为什么-savedstatehandle-选择与-viewmodel-强绑定而不是独立存在这种设计有何优缺点">为什么 SavedStateHandle 选择与 ViewModel 强绑定，而不是独立存在？这种设计有何优缺点？</h2>
+<p>（生命周期对齐、数据隔离与灵活性的权衡）</p>
+<h2 id="savedstatehandle-为何不支持直接保存-parcelable-数组或集合源码中有何限制">SavedStateHandle 为何不支持直接保存 Parcelable 数组或集合？源码中有何限制？</h2>
+<p>（分析 <code>Bundle.putParcelableArrayList()</code> 等方法的支持范围）</p>
+<h2 id="从源码角度解释当-savedstatehandle-的-livedata-被多个观察者订阅时数据恢复是否会多次触发为什么">从源码角度解释：当 SavedStateHandle 的 LiveData 被多个观察者订阅时，数据恢复是否会多次触发？为什么？</h2>
+<p>（分析 <code>SavingStateLiveData</code> 的 <code>restoreState()</code> 调用次数与 <code>LiveData</code> 的激活机制）</p>
+<h2 id="如果一个-fragment-被替换replace其关联的-savedstatehandle-数据会保留吗为什么">如果一个 Fragment 被替换（replace），其关联的 SavedStateHandle 数据会保留吗？为什么？</h2>
+<p>（与导航库的交互，<code>ViewModelStore</code> 的作用域）</p>
+<h2 id="如何避免在-savedstatehandle-中保存过大的数据可能引发什么问题">如何避免在 SavedStateHandle 中保存过大的数据？可能引发什么问题？</h2>
+<p>（Bundle 的大小限制，TransactionTooLargeException 风险）</p>
+<h2 id="在-savedstatehandle-中保存-livedata-时如何处理配置变更如屏幕旋转">在 SavedStateHandle 中保存 LiveData 时，如何处理配置变更（如屏幕旋转）？</h2>
+<p>（LiveData 的自动重建与数据保留机制）SavedStateHandle 如何与 SavedStateRegistry 协作完成状态保存？<br>
+（<code>SavedStateProvider</code> 注册与 <code>performSave</code>/<code>performRestore</code> 流程）</p>
+<h2 id="为什么-savedstatehandle-的-getlivedata-方法返回的-livedata-是热的">为什么 SavedStateHandle 的 getLiveData() 方法返回的 LiveData 是“热”的？</h2>
+<p>（数据恢复后立即可用，与普通 LiveData 的区别）</p>
+<h2 id="如何实现自定义-savedstatehandle-的数据序列化反序列化">如何实现自定义 SavedStateHandle 的数据序列化/反序列化？</h2>
+<p>（自定义 Parcelable 或 TypeConverter 的使用）</p>
+<h2 id="当进程被杀死后savedstatehandle-的数据能否恢复为什么">当进程被杀死后，SavedStateHandle 的数据能否恢复？为什么？</h2>
+<p>（与 <code>onSaveInstanceState</code> 的区别，进程死亡后的恢复机制）</p>
+<h2 id="savedstatehandle-中保存的数据在内存中如何管理是否存在内存泄漏风险">SavedStateHandle 中保存的数据在内存中如何管理？是否存在内存泄漏风险？</h2>
+<p>（与 ViewModel 生命周期的绑定）</p>
+<h2 id="为什么-google-推荐使用-savedstatehandle-而非直接操作-onsaveinstancestate">为什么 Google 推荐使用 SavedStateHandle 而非直接操作 onSaveInstanceState？</h2>
+<p>（解耦 UI 控制器与数据逻辑，遵循单一职责）</p>
+<p>从源码角度解释 SavedStateHandle 如何通过 <code>SavedStateProvider</code> 与 <code>ViewModel</code> 绑定？<br>
+（跟踪 <code>AbstractSavedStateViewModelFactory</code> 的实现）</p>
+<h2 id="creationextras-是如何简化-savedstatehandleviewmodel的创建的">CreationExtras 是如何简化 SavedStateHandle（ViewModel）的创建的？</h2>
+<h2 id="savedstatehandle-在-jetpack-compose-中的-viewmodel-内使用时源码流程有何不同">SavedStateHandle 在 Jetpack Compose 中的 ViewModel 内使用时，源码流程有何不同？</h2>
+<p>（对比 <code>viewModel()</code> 函数与 <code>SavedStateHandle</code> 的集成）</p>
+<h2 id="savedstatehandle-与-jetpack-navigation-的-safe-args-如何配合使用">SavedStateHandle 与 Jetpack Navigation 的 Safe Args 如何配合使用？</h2>
+<p>（参数传递与状态恢复的协同）</p>
+<h2 id="savedstatehandle-在-jetpack-compose-中的使用有何注意事项">SavedStateHandle 在 Jetpack Compose 中的使用有何注意事项？</h2>
+<p>（与 <code>rememberSaveable</code> 的协作关系）</p>
+<h1 id="参考">参考</h1>
+<blockquote>
+<p>https://juejin.cn/post/7299364292473192458</p>
+</blockquote>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E5%8F%91%E7%8E%B0%E9%97%AE%E9%A2%98">发现问题</a></li>
+<li><a href="#%E8%A7%A3%E5%86%B3%E6%80%9D%E8%B7%AF">解决思路</a>
+<ul>
+<li><a href="#%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E4%BF%9D%E5%AD%98%E7%8A%B6%E6%80%81">什么时候保存状态</a>
+<ul>
+<li><a href="#%E7%94%A8%E6%88%B7%E5%8F%91%E8%B5%B7%E7%9A%84%E7%95%8C%E9%9D%A2%E7%8A%B6%E6%80%81%E8%A7%A3%E9%99%A4">用户发起的界面状态解除</a></li>
+<li><a href="#%E7%B3%BB%E7%BB%9F%E5%8F%91%E8%B5%B7%E7%9A%84%E7%95%8C%E9%9D%A2%E7%8A%B6%E6%80%81%E8%A7%A3%E9%99%A4">系统发起的界面状态解除</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88">解决方案</a>
+<ul>
+<li><a href="#%E7%94%A8%E4%BB%80%E4%B9%88%E4%BF%9D%E5%AD%98%E7%95%8C%E9%9D%A2%E7%8A%B6%E6%80%81">用什么保存界面状态？</a>
+<ul>
+<li><a href="#%E4%B8%B4%E6%97%B6%E4%BF%9D%E5%AD%98%E6%96%B9%E6%A1%88">临时保存方案</a></li>
+<li><a href="#%E6%8C%81%E4%B9%85%E5%8C%96%E4%BF%9D%E5%AD%98%E6%96%B9%E6%A1%88">持久化保存方案</a></li>
+</ul>
+</li>
+<li><a href="#%E9%85%8D%E7%BD%AE%E6%9B%B4%E6%94%B9%E7%9A%84%E7%89%B9%E6%AE%8A%E5%A4%84%E7%90%86">配置更改的特殊处理</a></li>
+<li><a href="#%E6%80%BB%E7%BB%93">总结</a></li>
+<li><a href="#%E6%A0%B8%E5%BF%83%E7%B1%BB">核心类</a></li>
+<li><a href="#%E5%85%B3%E9%94%AE%E6%B5%81%E7%A8%8B%E6%97%B6%E5%BA%8F%E5%9B%BE">关键流程/时序图</a></li>
+</ul>
+</li>
+<li><a href="#%E6%B3%A8%E6%84%8F">注意</a>
+<ul>
+<li><a href="#savedstatehandle-%E7%9A%84%E6%A0%B8%E5%BF%83%E4%BD%9C%E7%94%A8%E6%98%AF%E4%BB%80%E4%B9%88%E9%80%82%E7%94%A8%E5%9C%BA%E6%89%80%E6%98%AF%E4%BB%80%E4%B9%88">SavedStateHandle 的核心作用是什么？适用场所是什么？</a></li>
+<li><a href="#savedstatehandle-%E5%86%85%E9%83%A8%E5%A6%82%E4%BD%95%E5%AD%98%E5%82%A8%E6%95%B0%E6%8D%AE">SavedStateHandle 内部如何存储数据？</a></li>
+<li><a href="#%E5%BA%95%E5%B1%82%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84%E6%98%AF%E4%BB%80%E4%B9%88">底层数据结构是什么？</a></li>
+<li><a href="#%E5%AE%83%E4%B8%8E-bundle-%E7%9A%84%E5%85%B3%E7%B3%BB%E6%98%AF%E4%BB%80%E4%B9%88">它与 Bundle 的关系是什么？</a></li>
+<li><a href="#savedstatehandle-%E6%94%AF%E6%8C%81%E4%BF%9D%E5%AD%98%E5%93%AA%E4%BA%9B%E6%95%B0%E6%8D%AE%E7%B1%BB%E5%9E%8B%E4%B8%8D%E6%94%AF%E6%8C%81%E7%9A%84%E7%B1%BB%E5%9E%8B%E5%A6%82%E4%BD%95%E5%A4%84%E7%90%86">SavedStateHandle 支持保存哪些数据类型？不支持的类型如何处理？</a></li>
+<li><a href="#%E5%A6%82%E6%9E%9C%E9%9C%80%E8%A6%81%E5%9C%A8-savedstatehandle-%E4%B8%AD%E4%BF%9D%E5%AD%98%E4%B8%80%E4%B8%AA%E4%B8%8D%E5%8F%AF%E5%8F%98%E6%95%B0%E6%8D%AE%E7%B1%BBimmutable-data-class%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5%E6%98%AF%E4%BB%80%E4%B9%88">如果需要在 SavedStateHandle 中保存一个不可变数据类（immutable data class），最佳实践是什么？</a></li>
+<li><a href="#savedstatehandle-%E7%9A%84%E6%95%B0%E6%8D%AE%E6%98%AF%E5%A6%82%E4%BD%95%E5%BA%8F%E5%88%97%E5%8C%96%E5%88%B0-bundle-%E4%B8%AD%E7%9A%84">SavedStateHandle 的数据是如何序列化到 Bundle 中的？</a></li>
+<li><a href="#bundle-%E7%9A%84%E5%BA%8F%E5%88%97%E5%8C%96%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E8%BF%87%E7%A8%8B%E5%AF%B9%E6%80%A7%E8%83%BD%E6%9C%89%E4%BD%95%E5%BD%B1%E5%93%8D">Bundle 的序列化/反序列化过程对性能有何影响？</a></li>
+<li><a href="#%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%97%B6%E5%A6%82%E4%BD%95%E5%A4%84%E7%90%86%E7%B1%BB%E5%9E%8B%E5%AE%89%E5%85%A8">反序列化时如何处理类型安全？</a></li>
+<li><a href="#%E5%BD%93-activityfragment-%E8%A2%AB%E7%B3%BB%E7%BB%9F%E9%94%80%E6%AF%81%E9%87%8D%E5%BB%BA%E6%97%B6savedstatehandle-%E5%A6%82%E4%BD%95%E4%BF%9D%E8%AF%81%E6%95%B0%E6%8D%AE%E4%B8%8D%E4%B8%A2%E5%A4%B1">当 Activity/Fragment 被系统销毁重建时，SavedStateHandle 如何保证数据不丢失？</a></li>
+<li><a href="#savedstatehandle-%E7%9A%84%E6%95%B0%E6%8D%AE%E4%BD%95%E6%97%B6%E8%A2%AB%E4%BF%9D%E5%AD%98%E4%BD%95%E6%97%B6%E8%A2%AB%E6%B8%85%E9%99%A4">SavedStateHandle 的数据何时被保存？何时被清除？</a></li>
+<li><a href="#savedstateregistry-%E7%9A%84%E4%BD%9C%E7%94%A8%E6%98%AF%E4%BB%80%E4%B9%88%E5%AE%83%E6%98%AF%E5%A6%82%E4%BD%95%E4%B8%8E-savedstatehandle-%E5%85%B3%E8%81%94%E7%9A%84">SavedStateRegistry 的作用是什么？它是如何与 SavedStateHandle 关联的？</a></li>
+<li><a href="#savedstateprovider-%E6%8E%A5%E5%8F%A3%E7%9A%84%E8%AE%BE%E8%AE%A1%E7%9B%AE%E7%9A%84%E6%98%AF%E4%BB%80%E4%B9%88savedstatehandle-%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E8%AF%A5%E6%8E%A5%E5%8F%A3">SavedStateProvider 接口的设计目的是什么？SavedStateHandle 如何实现该接口？</a></li>
+<li><a href="#savedstateviewmodelfactory-%E7%B1%BB%E5%9C%A8-savedstatehandle-%E7%9A%84%E5%88%9B%E5%BB%BA%E8%BF%87%E7%A8%8B%E4%B8%AD%E6%89%AE%E6%BC%94%E4%BB%80%E4%B9%88%E8%A7%92%E8%89%B2">SavedStateViewModelFactory 类在 SavedStateHandle 的创建过程中扮演什么角色？</a></li>
+<li><a href="#savedstatehandlecontroller-%E7%9A%84%E4%BD%9C%E7%94%A8%E6%98%AF%E4%BB%80%E4%B9%88%E5%AE%83%E6%98%AF%E5%A6%82%E4%BD%95%E5%8D%8F%E8%B0%83-viewmodel-%E5%92%8C-savedstateregistry-%E7%9A%84">SavedStateHandleController 的作用是什么？它是如何协调 ViewModel 和 SavedStateRegistry 的？</a></li>
+<li><a href="#savedstateregistrycontroller%E7%9A%84%E4%BD%9C%E7%94%A8%E6%98%AF%E4%BB%80%E4%B9%88%E5%AE%83%E6%98%AF%E5%A6%82%E4%BD%95%E5%8D%8F%E8%B0%83-viewmodel-%E5%92%8C-savedstateregistry-%E7%9A%84">SavedStateRegistryController的作用是什么？它是如何协调 ViewModel 和 SavedStateRegistry 的？</a></li>
+<li><a href="#savedstatehandlesprovider%E7%9A%84%E4%BD%9C%E7%94%A8%E6%98%AF%E4%BB%80%E4%B9%88%E4%B8%8Esavedstatehandleprovider%E7%9A%84%E5%85%B3%E7%B3%BB">SavedStateHandlesProvider的作用是什么？与SavedStateHandleProvider的关系？</a></li>
+<li><a href="#savedstateregistry-%E7%9A%84-performsave-%E5%92%8C-performrestore-%E6%96%B9%E6%B3%95%E7%9A%84%E8%B0%83%E7%94%A8%E6%97%B6%E6%9C%BA%E6%98%AF%E4%BB%80%E4%B9%88">SavedStateRegistry 的 performSave() 和 performRestore() 方法的调用时机是什么？</a></li>
+<li><a href="#%E5%BD%93-viewmodel-%E8%A2%AB%E6%B8%85%E9%99%A4%E6%97%B6savedstatehandle-%E7%9A%84%E6%95%B0%E6%8D%AE%E5%A6%82%E4%BD%95%E8%A2%AB%E5%9B%9E%E6%94%B6%E6%98%AF%E5%90%A6%E5%AD%98%E5%9C%A8%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E9%A3%8E%E9%99%A9">当 ViewModel 被清除时，SavedStateHandle 的数据如何被回收？是否存在内存泄漏风险？</a></li>
+<li><a href="#savedstatehandle-%E5%A6%82%E4%BD%95%E5%A4%84%E7%90%86%E5%8A%A8%E6%80%81%E6%B3%A8%E5%86%8C%E7%9A%84%E7%BB%84%E4%BB%B6%E5%A6%82%E5%8A%A8%E6%80%81%E6%B7%BB%E5%8A%A0%E7%9A%84-fragment%E7%9A%84%E7%8A%B6%E6%80%81%E4%BF%9D%E5%AD%98">SavedStateHandle 如何处理动态注册的组件（如动态添加的 Fragment）的状态保存？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88-savedstatehandle-%E7%9A%84-livedata-%E5%9C%A8%E6%81%A2%E5%A4%8D%E6%97%B6%E4%BC%9A%E7%AB%8B%E5%8D%B3%E8%A7%A6%E5%8F%91%E6%95%B0%E6%8D%AE%E6%9B%B4%E6%96%B0%E5%BA%95%E5%B1%82%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0">为什么 SavedStateHandle 的 LiveData 在恢复时会立即触发数据更新？底层如何实现？</a></li>
+<li><a href="#savedstatehandle-%E5%A6%82%E4%BD%95%E5%88%A9%E7%94%A8%E8%A7%82%E5%AF%9F%E8%80%85%E6%A8%A1%E5%BC%8F%E5%AE%9E%E7%8E%B0%E6%95%B0%E6%8D%AE%E5%8F%98%E5%8C%96%E7%9B%91%E5%90%AC">SavedStateHandle 如何利用观察者模式实现数据变化监听？</a></li>
+<li><a href="#savedstatehandle-%E5%A6%82%E4%BD%95%E9%80%9A%E8%BF%87%E4%BB%A3%E7%90%86%E6%A8%A1%E5%BC%8F%E7%AE%80%E5%8C%96-livedata-%E7%9A%84%E5%AD%98%E5%8F%96">SavedStateHandle 如何通过代理模式简化 LiveData 的存取？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88-savedstatehandle-%E7%9A%84-bundle-%E4%B8%8D%E7%9B%B4%E6%8E%A5%E6%9A%B4%E9%9C%B2%E7%BB%99%E5%BC%80%E5%8F%91%E8%80%85%E8%BF%99%E7%A7%8D%E8%AE%BE%E8%AE%A1%E6%9C%89%E4%BB%80%E4%B9%88%E4%BC%98%E5%8A%BF">为什么 SavedStateHandle 的 Bundle 不直接暴露给开发者？这种设计有什么优势？</a></li>
+<li><a href="#%E5%BD%93%E5%A4%9A%E4%B8%AA-viewmodel-%E5%85%B1%E4%BA%AB%E5%90%8C%E4%B8%80%E4%B8%AA-savedstatehandle-%E6%97%B6%E5%A6%82%E4%BD%95%E9%81%BF%E5%85%8D%E9%94%AE%E5%90%8D%E5%86%B2%E7%AA%81%E6%BA%90%E7%A0%81%E4%B8%AD%E6%9C%89%E4%BD%95%E9%98%B2%E6%8A%A4%E6%8E%AA%E6%96%BD">当多个 ViewModel 共享同一个 SavedStateHandle 时，如何避免键名冲突？源码中有何防护措施？</a></li>
+<li><a href="#%E5%A6%82%E6%9E%9C%E5%9C%A8-savedstatehandle-%E4%B8%AD%E4%BF%9D%E5%AD%98%E4%BA%86%E4%B8%80%E4%B8%AA%E5%8C%BF%E5%90%8D%E5%86%85%E9%83%A8%E7%B1%BB%E5%AF%B9%E8%B1%A1%E4%BC%9A%E5%BC%95%E5%8F%91%E4%BB%80%E4%B9%88%E9%97%AE%E9%A2%98%E6%BA%90%E7%A0%81%E5%A6%82%E4%BD%95%E8%A7%84%E9%81%BF">如果在 SavedStateHandle 中保存了一个匿名内部类对象，会引发什么问题？源码如何规避？</a></li>
+<li><a href="#savedstatehandle-%E5%A6%82%E4%BD%95%E5%A4%84%E7%90%86%E8%BF%9B%E7%A8%8B%E8%A2%AB%E6%9D%80%E6%AD%BB%E5%90%8E%E6%95%B0%E6%8D%AE%E7%9A%84%E6%81%A2%E5%A4%8D%E4%B8%8E-onsaveinstancestate-%E7%9A%84%E5%B7%AE%E5%BC%82%E6%98%AF%E4%BB%80%E4%B9%88">SavedStateHandle 如何处理进程被杀死后数据的恢复？与 <code>onSaveInstanceState</code> 的差异是什么？</a></li>
+<li><a href="#savedstatehandle-%E7%9A%84-getlivedatakey-%E6%96%B9%E6%B3%95%E4%B8%BA%E4%BD%95%E8%BF%94%E5%9B%9E%E4%B8%80%E4%B8%AA%E7%89%B9%E6%AE%8A%E7%9A%84livedata-%E5%AF%B9%E8%B1%A1%E5%AE%83%E7%9A%84-mregular-%E5%92%8C-msavedstate-%E5%AD%97%E6%AE%B5%E6%9C%89%E4%BD%95%E4%BD%9C%E7%94%A8">SavedStateHandle 的 getLiveData(key) 方法为何返回一个特殊的LiveData 对象？它的 mRegular 和 mSavedState 字段有何作用？</a></li>
+<li><a href="#savedstateregistry-%E7%9A%84-performsave-%E6%96%B9%E6%B3%95%E4%B8%BA%E4%BD%95%E8%A6%81%E5%90%88%E5%B9%B6-restoredstate-%E5%92%8C%E5%BD%93%E5%89%8D%E7%8A%B6%E6%80%81%E6%BA%90%E7%A0%81%E4%B8%AD%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E8%A6%86%E7%9B%96%E9%80%BB%E8%BE%91">SavedStateRegistry 的 performSave() 方法为何要合并 restoredState 和当前状态？源码中如何实现覆盖逻辑？</a></li>
+<li><a href="#%E5%A6%82%E6%9E%9C%E8%87%AA%E5%AE%9A%E4%B9%89%E4%B8%80%E4%B8%AA-viewmodel-%E5%B7%A5%E5%8E%82%E5%A6%82%E4%BD%95%E6%89%8B%E5%8A%A8%E5%B0%86-savedstatehandle-%E6%B3%A8%E5%85%A5%E5%88%B0-viewmodel-%E4%B8%AD%E8%AF%B7%E7%BB%93%E5%90%88%E6%BA%90%E7%A0%81%E8%AF%B4%E6%98%8E%E5%85%B3%E9%94%AE%E6%AD%A5%E9%AA%A4">如果自定义一个 ViewModel 工厂，如何手动将 SavedStateHandle 注入到 ViewModel 中？请结合源码说明关键步骤。</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88-savedstatehandle-%E9%80%89%E6%8B%A9%E4%B8%8E-viewmodel-%E5%BC%BA%E7%BB%91%E5%AE%9A%E8%80%8C%E4%B8%8D%E6%98%AF%E7%8B%AC%E7%AB%8B%E5%AD%98%E5%9C%A8%E8%BF%99%E7%A7%8D%E8%AE%BE%E8%AE%A1%E6%9C%89%E4%BD%95%E4%BC%98%E7%BC%BA%E7%82%B9">为什么 SavedStateHandle 选择与 ViewModel 强绑定，而不是独立存在？这种设计有何优缺点？</a></li>
+<li><a href="#savedstatehandle-%E4%B8%BA%E4%BD%95%E4%B8%8D%E6%94%AF%E6%8C%81%E7%9B%B4%E6%8E%A5%E4%BF%9D%E5%AD%98-parcelable-%E6%95%B0%E7%BB%84%E6%88%96%E9%9B%86%E5%90%88%E6%BA%90%E7%A0%81%E4%B8%AD%E6%9C%89%E4%BD%95%E9%99%90%E5%88%B6">SavedStateHandle 为何不支持直接保存 Parcelable 数组或集合？源码中有何限制？</a></li>
+<li><a href="#%E4%BB%8E%E6%BA%90%E7%A0%81%E8%A7%92%E5%BA%A6%E8%A7%A3%E9%87%8A%E5%BD%93-savedstatehandle-%E7%9A%84-livedata-%E8%A2%AB%E5%A4%9A%E4%B8%AA%E8%A7%82%E5%AF%9F%E8%80%85%E8%AE%A2%E9%98%85%E6%97%B6%E6%95%B0%E6%8D%AE%E6%81%A2%E5%A4%8D%E6%98%AF%E5%90%A6%E4%BC%9A%E5%A4%9A%E6%AC%A1%E8%A7%A6%E5%8F%91%E4%B8%BA%E4%BB%80%E4%B9%88">从源码角度解释：当 SavedStateHandle 的 LiveData 被多个观察者订阅时，数据恢复是否会多次触发？为什么？</a></li>
+<li><a href="#%E5%A6%82%E6%9E%9C%E4%B8%80%E4%B8%AA-fragment-%E8%A2%AB%E6%9B%BF%E6%8D%A2replace%E5%85%B6%E5%85%B3%E8%81%94%E7%9A%84-savedstatehandle-%E6%95%B0%E6%8D%AE%E4%BC%9A%E4%BF%9D%E7%95%99%E5%90%97%E4%B8%BA%E4%BB%80%E4%B9%88">如果一个 Fragment 被替换（replace），其关联的 SavedStateHandle 数据会保留吗？为什么？</a></li>
+<li><a href="#%E5%A6%82%E4%BD%95%E9%81%BF%E5%85%8D%E5%9C%A8-savedstatehandle-%E4%B8%AD%E4%BF%9D%E5%AD%98%E8%BF%87%E5%A4%A7%E7%9A%84%E6%95%B0%E6%8D%AE%E5%8F%AF%E8%83%BD%E5%BC%95%E5%8F%91%E4%BB%80%E4%B9%88%E9%97%AE%E9%A2%98">如何避免在 SavedStateHandle 中保存过大的数据？可能引发什么问题？</a></li>
+<li><a href="#%E5%9C%A8-savedstatehandle-%E4%B8%AD%E4%BF%9D%E5%AD%98-livedata-%E6%97%B6%E5%A6%82%E4%BD%95%E5%A4%84%E7%90%86%E9%85%8D%E7%BD%AE%E5%8F%98%E6%9B%B4%E5%A6%82%E5%B1%8F%E5%B9%95%E6%97%8B%E8%BD%AC">在 SavedStateHandle 中保存 LiveData 时，如何处理配置变更（如屏幕旋转）？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88-savedstatehandle-%E7%9A%84-getlivedata-%E6%96%B9%E6%B3%95%E8%BF%94%E5%9B%9E%E7%9A%84-livedata-%E6%98%AF%E7%83%AD%E7%9A%84">为什么 SavedStateHandle 的 getLiveData() 方法返回的 LiveData 是“热”的？</a></li>
+<li><a href="#%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E8%87%AA%E5%AE%9A%E4%B9%89-savedstatehandle-%E7%9A%84%E6%95%B0%E6%8D%AE%E5%BA%8F%E5%88%97%E5%8C%96%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96">如何实现自定义 SavedStateHandle 的数据序列化/反序列化？</a></li>
+<li><a href="#%E5%BD%93%E8%BF%9B%E7%A8%8B%E8%A2%AB%E6%9D%80%E6%AD%BB%E5%90%8Esavedstatehandle-%E7%9A%84%E6%95%B0%E6%8D%AE%E8%83%BD%E5%90%A6%E6%81%A2%E5%A4%8D%E4%B8%BA%E4%BB%80%E4%B9%88">当进程被杀死后，SavedStateHandle 的数据能否恢复？为什么？</a></li>
+<li><a href="#savedstatehandle-%E4%B8%AD%E4%BF%9D%E5%AD%98%E7%9A%84%E6%95%B0%E6%8D%AE%E5%9C%A8%E5%86%85%E5%AD%98%E4%B8%AD%E5%A6%82%E4%BD%95%E7%AE%A1%E7%90%86%E6%98%AF%E5%90%A6%E5%AD%98%E5%9C%A8%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F%E9%A3%8E%E9%99%A9">SavedStateHandle 中保存的数据在内存中如何管理？是否存在内存泄漏风险？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88-google-%E6%8E%A8%E8%8D%90%E4%BD%BF%E7%94%A8-savedstatehandle-%E8%80%8C%E9%9D%9E%E7%9B%B4%E6%8E%A5%E6%93%8D%E4%BD%9C-onsaveinstancestate">为什么 Google 推荐使用 SavedStateHandle 而非直接操作 onSaveInstanceState？</a></li>
+<li><a href="#creationextras-%E6%98%AF%E5%A6%82%E4%BD%95%E7%AE%80%E5%8C%96-savedstatehandleviewmodel%E7%9A%84%E5%88%9B%E5%BB%BA%E7%9A%84">CreationExtras 是如何简化 SavedStateHandle（ViewModel）的创建的？</a></li>
+<li><a href="#savedstatehandle-%E5%9C%A8-jetpack-compose-%E4%B8%AD%E7%9A%84-viewmodel-%E5%86%85%E4%BD%BF%E7%94%A8%E6%97%B6%E6%BA%90%E7%A0%81%E6%B5%81%E7%A8%8B%E6%9C%89%E4%BD%95%E4%B8%8D%E5%90%8C">SavedStateHandle 在 Jetpack Compose 中的 ViewModel 内使用时，源码流程有何不同？</a></li>
+<li><a href="#savedstatehandle-%E4%B8%8E-jetpack-navigation-%E7%9A%84-safe-args-%E5%A6%82%E4%BD%95%E9%85%8D%E5%90%88%E4%BD%BF%E7%94%A8">SavedStateHandle 与 Jetpack Navigation 的 Safe Args 如何配合使用？</a></li>
+<li><a href="#savedstatehandle-%E5%9C%A8-jetpack-compose-%E4%B8%AD%E7%9A%84%E4%BD%BF%E7%94%A8%E6%9C%89%E4%BD%95%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9">SavedStateHandle 在 Jetpack Compose 中的使用有何注意事项？</a></li>
+</ul>
+</li>
+<li><a href="#%E5%8F%82%E8%80%83">参考</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://kanyewestforreal.github.io/post/android-jetpack2-livedata/">
+              <h3 class="post-title">
+                Android Jetpack(2) Livedata源码阅读记录
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  This blog is just for me to record the questions, which in my developing.
+  <div class="footer-right">
+    <a class="rss" href="https://kanyewestforreal.github.io//atom.xml" target="_blank">
+      <i class="ri-rss-line"></i> RSS
+    </a>
+    <span id="busuanzi_container_site_pv" style="margin-top: 8px;">
+      本站总访问量<span id="busuanzi_value_site_pv"></span>次
+    </span>
+  </div>
+  <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      // hljs.initHighlightingOnLoad()
+
+      // let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // // This should probably be throttled.
+      // // Especially because it triggers during smooth scrolling.
+      // // https://lodash.com/docs/4.17.10#throttle
+      // // You could do like...
+      // // window.addEventListener("scroll", () => {
+      // //    _.throttle(doThatStuff, 100);
+      // // });
+      // // Only not doing it here to keep this Pen dependency-free.
+
+      // window.addEventListener("scroll", event => {
+      //   let fromTop = window.scrollY;
+
+      //   mainNavLinks.forEach((link, index) => {
+      //     let section = document.getElementById(decodeURI(link.hash).substring(1));
+      //     let nextSection = null
+      //     if (mainNavLinks[index + 1]) {
+      //       nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+      //     }
+      //     if (section.offsetTop <= fromTop) {
+      //       if (nextSection) {
+      //         if (nextSection.offsetTop > fromTop) {
+      //           link.classList.add("current");
+      //         } else {
+      //           link.classList.remove("current");    
+      //         }
+      //       } else {
+      //         link.classList.add("current");
+      //       }
+      //     } else {
+      //       link.classList.remove("current");
+      //     }
+      //   });
+      // });
+
+    </script>
+  </body>
+</html>
