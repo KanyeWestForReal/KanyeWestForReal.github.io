@@ -1,0 +1,974 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Android Jetpack(4)  ViewModel源码阅读记录 | Grinofith&#39;s Blog</title>
+<link rel="shortcut icon" href="https://kanyewestforreal.github.io//favicon.ico?v=1765275803375">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://kanyewestforreal.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Android Jetpack(4)  ViewModel源码阅读记录 | Grinofith&#39;s Blog - Atom Feed" href="https://kanyewestforreal.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="发现问题
+
+数据丢失问题：Activity/Fragment 因配置变更（如屏幕旋转）被销毁重建时，临时数据丢失需重新初始化。
+生命周期耦合：异步操作（如网络请求）中直接操作 UI 可能导致内存泄漏或崩溃。
+职责混杂：业务逻辑和 UI 代码..." />
+    <meta name="keywords" content="Android" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <!-- <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script> -->
+    <script src="//cdn.jsdelivr.net/npm/leancloud-storage@4.13.2/dist/av-min.js"></script>
+    <script src="/media/js/read_mark.js"></script>
+    <script src="/media/js/highlight/highlight.min.js"></script>
+    <script src="/media/js/sroll_markdown_titile_list.js"></script>
+    <link rel="stylesheet" type="text/css" href="/media/js/highlight/styles/atom-one-dark.css">
+    <script>hljs.highlightAll();</script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://kanyewestforreal.github.io/">
+  <img class="avatar" src="https://kanyewestforreal.github.io//images/avatar.png?v=1765275803375" alt="">
+  </a>
+  <h1 class="site-title">
+    Grinofith&#39;s Blog
+  </h1>
+  <p class="site-description">
+    The key is seriously reflecting.
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Android Jetpack(4)  ViewModel源码阅读记录
+            </h2>
+            <div class="post-info">
+              <span>
+                2025-03-25
+              </span>
+              <span class="post-views">
+                  <span >阅读量：</span>
+                  <span id="dynamic-views-counter"></span>
+              </span>
+              <span>
+                23 min read
+              </span>
+              
+                <a href="https://kanyewestforreal.github.io/tag/AndroidTAG/" class="post-tag">
+                  # Android
+                </a>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://kanyewestforreal.github.io//post-images/android-jetpack4-viewmodel.jpg" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="发现问题">发现问题</h1>
+<ol>
+<li><strong>数据丢失问题</strong>：Activity/Fragment 因配置变更（如屏幕旋转）被销毁重建时，临时数据丢失需重新初始化。</li>
+<li><strong>生命周期耦合</strong>：异步操作（如网络请求）中直接操作 UI 可能导致内存泄漏或崩溃。</li>
+<li><strong>职责混杂</strong>：业务逻辑和 UI 代码耦合在 Activity/Fragment 中，违反单一职责原则。</li>
+<li><strong>状态冗余</strong>：多 Fragment 共享同一数据时需通过复杂回调或 EventBus 传递。</li>
+</ol>
+<h1 id="解决思路">解决思路</h1>
+<h2 id="核心需求">核心需求</h2>
+<ol>
+<li><strong>生命周期感知的数据持有</strong>：在配置变更（如旋转屏幕）时保留数据，避免重复加载。</li>
+<li><strong>UI控制器解耦</strong>：将业务逻辑与数据存储从 Activity/Fragment 中分离，降低耦合度。</li>
+<li><strong>资源自动释放</strong>：在关联的 UI 控制器完全销毁时自动清理资源，避免内存泄漏。</li>
+<li><strong>跨组件通信</strong>：支持 Fragment 之间或组件间安全共享数据。</li>
+</ol>
+<h2 id="关键思路">关键思路</h2>
+<ol>
+<li><strong>工厂方法模式</strong><br>
+<strong>Why？</strong>
+<ul>
+<li><strong>灵活实例化</strong>：通过 <code>ViewModelProvider.Factory</code> 接口，允许自定义 ViewModel 的创建逻辑（如依赖注入）。</li>
+<li><strong>统一入口</strong>：<code>ViewModelProvider</code> 封装了 ViewModel 的获取逻辑，调用方无需关心实例的创建细节。<br>
+<strong>实现类</strong>：</li>
+<li><code>NewInstanceFactory</code>：默认反射创建无参数 ViewModel 实例。</li>
+<li><code>AndroidViewModelFactory</code>：支持带 <code>Application</code> 参数的 <code>ViewModel</code>。</li>
+<li><code>SavedStateViewModelFactory</code>：支持带 <code>SavedStateHandle</code> 参数的 <code>ViewModel</code>。</li>
+</ul>
+</li>
+<li><strong>代理模式</strong><br>
+<strong>Why？</strong>
+<ul>
+<li><strong>生命周期代理</strong>：通过 <code>ReportFragment</code>代理 Activity 的生命周期事件，使得ViewModelStore 与 Activity/Fragment 的生命周期绑定，能够在 <code>onDestroy()</code> 时自动清除（非配置变更场景）。</li>
+<li><strong>逻辑解耦</strong>：Activity 无需直接处理 ViewModel 的生命周期，由系统框架自动管理。</li>
+</ul>
+</li>
+<li><strong>状态管理</strong><br>
+<strong>Why？</strong>
+<ul>
+<li><strong>资源释放</strong>：在 <code>ViewModel#onCleared()</code> 中释放资源（如取消网络请求），避免内存泄漏。</li>
+<li><strong>集中管理</strong>：<code>ViewModelStore</code> 作为容器，通过 HashMap 缓存 ViewModel 实例，确保同一作用域内实例唯一。</li>
+<li><strong>事件拦截</strong>：通过 <code>SavedStateHandle</code> 保存/恢复临时状态（如屏幕旋转时的输入框内容）。</li>
+<li><code>ViewModelStore</code>：内部维护 <code>HashMap&lt;String, ViewModel&gt;</code>。</li>
+<li><code>ViewModelStoreOwner</code>：接口（如 Activity/Fragment），提供 <code>ViewModelStore</code>。</li>
+</ul>
+</li>
+</ol>
+<h1 id="解决方案核心源码">解决方案（核心源码）</h1>
+<h2 id="核心类与接口"><strong>核心类与接口</strong></h2>
+<ol>
+<li>
+<p><strong>ViewModel(Impl)</strong><br>
+作为业务逻辑和界面状态的容器，其生命周期与 <code>ViewModelStoreOwner</code>（如 Activity、Fragment）绑定，确保数据在配置变更（如屏幕旋转）时不被销毁。支持<code>ViewModel</code>持有实现<code>Closeable</code>接口的资源，<code>ViewModelStoreOwner</code>会帮助自动释放<code>Closeable</code>资源。开发者通过继承该类实现自定义逻辑，并通过 <code>onCleared()</code> 释放资源，但是<code>onCleared()</code>无法释放<code>Closeable</code>资源，除非手动关闭。</p>
+</li>
+<li>
+<p><strong>ViewModelProvider(Impl)</strong><br>
+用于获取 <code>ViewModel</code> 实例的工具类，确保同一作用域内多次请求返回同一实例，避免重复创建。例如：</p>
+<pre><code class="language-kotlin">val viewModel = ViewModelProvider(activity)[MyViewModel::class.java]
+val viewModel = ViewModelProvider(activity).get(MyViewModel::class.java)
+</code></pre>
+<p>它通过 <code>ViewModelStore</code> 管理<code>ViewModel</code>实例缓存。</p>
+<p>每次这样创建<code>ViewModel</code>时，都会创建一个<code>ViewModelProvider</code>，由于创建时会把<code>ViewModelStoreOwner</code>传入，所以实际上每个<code>ViewModelProvider</code>都是操纵同一个<code>ViewModelStore</code>。</p>
+</li>
+<li>
+<p><strong>ViewModelStoreOwner 接口</strong><br>
+定义 <code>ViewModelStore</code> 的持有者，如 <code>ComponentActivity</code>、<code>Fragment</code> 或 <code>NavBackStackEntry</code>（用于导航组件）。<code>ViewModel</code> 的作用域由其 <code>ViewModelStoreOwner</code> 的生命周期决定。</p>
+</li>
+<li>
+<p><strong>ViewModelStore</strong><br>
+存储 <code>ViewModel</code> 实例的容器，当 <code>ViewModelStoreOwner</code> 因为销毁时分发<code>ON_DESTROY</code>事件，如果是<strong>非配置变更</strong>导致的销毁，那么就会触发 <code>ViewModelStore</code> 的清理逻辑，释放所有<code>ViewModel</code>资源，包括其中的<code>Closeable</code>资源。</p>
+</li>
+<li>
+<p><strong>SavedStateHandle</strong><br>
+用于在进程重建（如系统杀死应用后恢复）时临时保存数据。通过键值对存储数据，支持通过<code>LiveData</code> 、 <code>StateFlow</code> 订阅数据。<code>SavedStateHandle</code> 的数据仅在进程重建时有效，应用彻底关闭后需依赖持久化存储（如数据库）</p>
+</li>
+<li>
+<p><strong>SavedStateViewModelFactory</strong><br>
+<code>SavedStateViewModelFactory</code> 是用于创建支持状态临时保存的 <code>ViewModel</code> 的工厂类，其核心目标是让 <code>ViewModel</code> 能够通过 <code>SavedStateHandle</code> 访问和保存进程重建后的状态数据。</p>
+</li>
+</ol>
+<h2 id="源码流程图关键流程">源码流程图（关键流程）</h2>
+<figure data-type="image" tabindex="1"><img src="https://kanyewestforreal.github.io//post-images/1748514503628.png" alt="vm_flow" loading="lazy"></figure>
+<h2 id="时序图">时序图</h2>
+<h3 id="viewmodelstore-bundle的保存与恢复">ViewModelStore、Bundle的保存与恢复</h3>
+<figure data-type="image" tabindex="2"><img src="https://kanyewestforreal.github.io//post-images/1748514533778.png" alt="viewstore_bundle_s_r.mmd_wm" loading="lazy"></figure>
+<h3 id="viewmodel组件库运作">ViewModel组件库运作</h3>
+<figure data-type="image" tabindex="3"><img src="https://kanyewestforreal.github.io//post-images/1748514558825.png" alt="vm_timeorder.mmd_wm" loading="lazy"></figure>
+<h1 id="注意">注意</h1>
+<h2 id="工厂模式在-viewmodel-中的应用为什么不能直接实例化viewmodel">工厂模式在 ViewModel 中的应用？为什么不能直接实例化ViewModel？</h2>
+<h2 id="有哪些类型的factory">有哪些类型的Factory？</h2>
+<p><strong>问题一、二</strong>：</p>
+<p><strong>ViewModel 由系统管理</strong><br>
+<code>ViewModel</code> 的设计初衷是与 <code>Activity/Fragment</code> 的生命周期解耦，当 Activity 因配置变更被销毁重建时，ViewModel 会被保留、重用。使用工厂创建ViewModel时，保证所有 ViewModel 的生成都有一致的存放点<code>ViewModelStore</code>，实现可以复用的效果，同时方便后续保留<code>ViewModelStore</code>，从而恢复<code>ViewModel</code>。</p>
+<p>如果你直接 <code>new MyViewModel()</code>，每次 Activity 重建时都会得到一个新的实例，失去了 ViewModel 的价值。</p>
+<p><strong>保存和恢复状态</strong><br>
+通过工厂生成的 ViewModel 可以支持 <code>SavedStateHandle</code> 注入，实现进程被系统回收后恢复数据，减少手动注入产生的模板代码。</p>
+<p>如果你自己 new 出来的 ViewModel，需要自己创建、管理<code>SavedStateHandle</code>。</p>
+<p><strong>问题三</strong>：</p>
+<p>AndroidX 中常见的几种 Factory 类型：</p>
+<p><code>NewInstanceFactory</code>：默认工厂，只能创建无参构造的 ViewModel</p>
+<p><code>AndroidViewModelFactory</code>：用于创建继承自 <code>AndroidViewModel</code>（带 <code>Application</code> 参数）的 ViewModel</p>
+<p><code>SavedStateViewModelFactory</code>：支持注入 <code>SavedStateHandle</code>，用于进程恢复场景。</p>
+<p>Hilt生成的Factory、自定义Factory。</p>
+<h2 id="viewmodelstore-的内部数据结构是什么">ViewModelStore 的内部数据结构是什么？</h2>
+<pre><code class="language-kotlin">public open class ViewModelStore {
+	//核心就是 map 键值对
+    private val map = mutableMapOf&lt;String, ViewModel&gt;()
+    //...
+}
+</code></pre>
+<h2 id="viewmodel的生命周期与activity有何不同">ViewModel的生命周期与Activity有何不同？</h2>
+<h2 id="为什么viewmodel可以保存屏幕旋转时的数据解释viewmodelstore的存储原理">为什么ViewModel可以保存屏幕旋转时的数据/解释ViewModelStore的存储原理？</h2>
+<p>严格来说<code>ViewModel</code>的生命周期与<code>Activity</code>相比，在不同情况生存时长是不一样的。</p>
+<p>用户主动退出、系统销毁程序时，<code>ViewModel</code>的生命周期和<code>Activity</code>一致。</p>
+<p>在配置变更时，<code>ViewModel</code>的生命周期比<code>Activity</code>长。因为<code>Activity</code>会经历先销毁后重建，而<code>ViewModel</code>会被保存在<code>NonConfigurationInstances</code>中，直到<code>Activity</code>重建时，又会获取对应的<code>ViewModel</code>。</p>
+<p><code>ViewModel</code>可以保存配置变更时的数据，是因为<code>ViewModel</code>被保存在<code>ViewModelStore</code>中，<code>ViewModelStore</code>在销毁前会被保存到<code>NonConfigurationInstances</code>中，<code>NonConfigurationInstances</code>又被保存到<code>ActivityClientRecord</code>中，后续重建时则会从<code>ActivityClientRecord</code>一步步提取出来，给重建的Activity恢复数据。</p>
+<h2 id="fragment创建viewmodel的流程">Fragment创建ViewModel的流程？</h2>
+<p>通过FragmentManager 进行add/replace Fragment后。</p>
+<pre><code class="language-java">fragmentManager.beginTransaction()
+               .add(R.id.container, MyFragment.class, args)
+               .commit();
+</code></pre>
+<p>会执行attach方法。</p>
+<pre><code class="language-java">//attach-&gt;performAttach-&gt;attachController-&gt;onAttach
+void attachController(@NonNull FragmentHostCallback&lt;?&gt; host,
+            @NonNull FragmentContainer container, @Nullable final Fragment parent) {
+    // Get the FragmentManagerViewModel
+    //嵌套 Fragment：子 Fragment 复用父 FragmentManager 的 non-config
+    if (parent != null) {
+        mNonConfig = parent.mFragmentManager.getChildNonConfig(parent);
+    } else if (host instanceof ViewModelStoreOwner) {
+        // 根级 Fragment：从宿主 Activity/FragmentActivity（实现了 ViewModelStoreOwner）拿到它的 ViewModelStore
+        ViewModelStore viewModelStore = ((ViewModelStoreOwner) host).getViewModelStore();
+        // 在宿主的 ViewModelStore 中创建/获取一个 FragmentManagerViewModel
+        mNonConfig = FragmentManagerViewModel.getInstance(viewModelStore);
+    } else {
+        //极少见的情况：宿主不支持 ViewModelStore，则创建一个临时的 FragmentManagerViewModel
+        //false表示不会跨配置存活
+        mNonConfig = new FragmentManagerViewModel(false);
+    }
+}
+
+@NonNull
+static FragmentManagerViewModel getInstance(ViewModelStore viewModelStore) {
+    //把 FragmentManagerViewModel 放进了宿主的 ViewModelStore：
+	//去该 store 中查找已有的 FragmentManagerViewModel 实例，若不存在就新建；
+    //因为宿主的 ViewModelStore 会在配置变化时保留，所以这个 FragmentManagerViewModel 也就得以跨配置存活。
+	ViewModelProvider viewModelProvider = new 			ViewModelProvider(viewModelStore,FACTORY);
+	return viewModelProvider.get(FragmentManagerViewModel.class);
+}
+
+@NonNull
+ViewModelStore FragmentManagerViewModel#getViewModelStore(@NonNull Fragment f) { 
+    //当你在某个 Fragment 中调用 new ViewModelProvider(this)（this 实现了 ViewModelStoreOwner）
+    //底层会先走到 Fragment.getViewModelStore()
+    //再委托给它对应的 FragmentManagerViewModel.getViewModelStore(thisFragment),也就是这个方法
+	ViewModelStore viewModelStore = mViewModelStores.get(f.mWho);
+	if (viewModelStore == null) {
+        //每个 Fragment 第一次请求时「新创建」一个私有的 ViewModelStore，
+        //并缓存到 mViewModelStores 里。
+        //后续同一个 Fragment 再取，就能拿到同一个容器。
+		viewModelStore = new ViewModelStore();
+		mViewModelStores.put(f.mWho, viewModelStore);
+        //这个子 Fragment 自己的 ViewModelStore 并不是直接从宿主拿过来的，
+        //而是由宿主的 FragmentManagerViewModel “工厂”按需生成并管理
+	}
+	return viewModelStore;
+}
+</code></pre>
+<p><code>FragmentManagerViewModel</code>由<code>FragmentManager</code>管理，被保存在<code>Host（Activity）</code>的<code>ViewModelStore</code>中，<code>FragmentManagerViewModel</code>内有<code>K:Fragment to V:ViewModelStore</code>的<code>map</code>，也就是每一个<code>Fragment</code>都有对应的<code>ViewModelStore</code>。</p>
+<h2 id="viewmodel如何避免内存泄漏">ViewModel如何避免内存泄漏？</h2>
+<h2 id="viewmodel-中启动协程需要注意什么viewmodel-与-livedataflow-的最佳实践">ViewModel 中启动协程需要注意什么？ViewModel 与 LiveData/Flow 的最佳实践？</h2>
+<h2 id="为什么-viewmodel-不直接持有-contextandroidviewmodel与普通viewmodel的区别">为什么 ViewModel 不直接持有 Context？AndroidViewModel与普通ViewModel的区别？</h2>
+<p><strong>问题一</strong>：</p>
+<pre><code class="language-java">//ComponentActivity构造函数
+public ComponentActivity() {
+    //订阅ComponentActivity的生命周期事件，如果ON_DESTROY
+    //同时非配置变化，那么释放ViewModelStore占用的内存
+    //
+    getLifecycle().addObserver(new LifecycleEventObserver() {
+        @Override
+        public void onStateChanged(@NonNull LifecycleOwner source,
+                @NonNull Lifecycle.Event event) {
+            if (event == Lifecycle.Event.ON_DESTROY) {
+                // Clear out the available context
+                mContextAwareHelper.clearAvailableContext();
+                // And clear the ViewModelStore
+                if (!isChangingConfigurations()) {
+                    getViewModelStore().clear();
+                }
+                mReportFullyDrawnExecutor.activityDestroyed();
+            }
+        }
+    });
+}
+
+//ViewModelStore#clear
+public fun clear() {
+    for (vm in map.values) {
+        vm.clear()
+    }
+    map.clear()
+}
+
+//ViewModel#clear
+@MainThread
+internal actual fun clear() {
+    impl?.clear()
+    onCleared()
+}
+
+//ViewModelImpl#clear
+@MainThread
+fun clear() {
+    if (isCleared) return
+
+    isCleared = true
+    //lock是对象实例锁
+    synchronized(lock) {
+        //关闭用Key注册的资源
+        for (closeable in keyToCloseables.values) {
+            closeWithRuntimeException(closeable)
+        }
+        //关闭没有用Key注册的资源
+        for (closeable in closeables) {
+            closeWithRuntimeException(closeable)
+        }
+        //关闭和清除不同
+        //仅仅清除没有键的资源的引用，以防止意外重新创建资源。
+        //例如，懒加载的属性，如果一次都没使用过，在close时会意外创建
+        //所以需要clear，让其被正常GC
+        closeables.clear()
+            
+        //不清除用Key注册的资源，是因为由于使用Key的原因，是不会重新创建资源的
+        //因为在put进keyToCloseables时，会自动关闭老的资源
+    }
+}
+
+//ViewModelImpl#addCloseable
+fun addCloseable(key: String, closeable: AutoCloseable) {
+    //虽然在用户调用 onCleared() 后不应该做任何逻辑，
+    //但我们将确保如果它已经被调用
+    //立即关闭尝试添加的 closeable，以确保不会有泄漏。
+    if (isCleared) {
+        closeWithRuntimeException(closeable)
+        return
+    }
+	
+    val oldCloseable = synchronized(lock) { keyToCloseables.put(key, closeable) }
+    //关闭老资源
+    closeWithRuntimeException(oldCloseable)
+}
+</code></pre>
+<pre><code class="language-kotlin">public val ViewModel.viewModelScope: CoroutineScope
+    get() = synchronized(VIEW_MODEL_SCOPE_LOCK) {
+        getCloseable(VIEW_MODEL_SCOPE_KEY)
+            ?: createViewModelScope().also { scope -&gt; addCloseable(VIEW_MODEL_SCOPE_KEY, scope) }
+    }
+
+private val VIEW_MODEL_SCOPE_LOCK = SynchronizedObject()
+</code></pre>
+<p>由上述代码得知，<code>viewModelScope</code>也是<code>Closeable</code>资源，通过<code>VIEW_MODEL_SCOPE_KEY</code>注册，会在 <code>ViewModel</code> 清理时被<code>close</code>，从而自动取消作用域下的所有协程。</p>
+<p>所以在ViewModel中启动协程，尽可能使用<code>viewModelScope</code>方便管理。否则，<strong>必须在<code>onCleared</code>方法中手动<code>cancel</code>协程。</strong></p>
+<p>在ViewModel 中使用 LiveData/Flow 的最佳实践，尽可能以只读的形式向外发布数据。保证数据的单向流动。比如：</p>
+<pre><code class="language-kotlin">class MyViewModel : ViewModel() {
+    private val _userData = MutableLiveData&lt;User&gt;()
+    val userData: LiveData&lt;User&gt; = _userData
+
+    fun fetchUser() {
+        viewModelScope.launch {
+            _userData.value = repository.getUser()
+        }
+    }
+}
+</code></pre>
+<p>想要修改/更新_userData只能通过ViewModel的方法，而不是在UI层直接操作数据进行修改。</p>
+<p><strong>问题三</strong>：</p>
+<p><code>ViewModel</code> 的设计初衷就是为了把与界面（<code>Activity</code>/<code>Fragment</code>）强耦合的逻辑和状态剥离出去，让它能在配置变化（比如旋转屏幕）时依然存活。</p>
+<p><code>Activity</code>/<code>Fragment</code> 的 <code>Context</code> 生命周期与本身相同，和 <code>ViewModel</code> 的生命周期比则短。如果 <code>ViewModel</code> 保存了对 <code>Activity</code> 的引用，那么当 <code>Activity</code> 被销毁（例如用户离开该界面，或者配置变化触发的重建），<code>ViewModel</code>对<code>Activity</code>的引用会阻止其垃圾回收，导致内存泄漏。</p>
+<p>在单元测试里，<strong>通常希望能够脱离 Android 系统环境直接测试 <code>ViewModel</code></strong>。若其依赖了 <code>Context</code>，就失去了快速、本地化单元测试的优势。</p>
+<p><strong>如果确实需要拿到 <code>Context</code>，优先使用 <code>ApplicationContext</code></strong>。因为<code>ApplicationContext</code> 的生命周期与整个应用进程相同，也就是说，它比任何 <code>Activity</code>/<code>Fragment</code> 的生命周期都要长，也就不会像持有 <code>Activity</code> 那样容易产生内存泄漏。<strong>注意配合<code>AndroidViewModel</code>使用</strong>，<code>AndroidViewModel</code>适用于需要使用<code>Context</code>的<code>ViewModel</code>。</p>
+<pre><code class="language-kotlin">class ResourceViewModel(app: Application) : AndroidViewModel(app) {
+    fun loadWelcomeMessage(): String {
+        // 从 res/values/strings.xml 里读取
+        return getApplication&lt;Application&gt;().getString(R.string.welcome)
+    }
+}
+</code></pre>
+<hr>
+<h2 id="viewmodel在什么时候会被销毁什么时候不被销毁">ViewModel在什么时候会被销毁？什么时候不被销毁？</h2>
+<p>首先，我们需要知道<strong>ViewModel2.0</strong>之前呢，其原理是在Activity上add一个<code>HolderFragment</code>，然后设置<code>setRetainInstance(true)</code>方法就能让这个<code>Fragment</code>在<code>Activity</code>重建时存活下来，所有通过 <code>ViewModelProvider</code> 创建的 ViewModel 对象都会放到这个 retained Fragment 的一个 <code>Map&lt;Class, ViewModel&gt;</code> 里，也就保证了<code>ViewModel</code>能够跨配置存活。</p>
+<p><strong>2.0之后</strong>，其实是用到了<code>Activity</code>的<code>onRetainNonConfigurationInstance()</code>和<code>getLastNonConfigurationInstance()</code>这两个方法，相当于在配置变化的时候会保存ViewModelStore的实例，然后从其中恢复ViewModel，所以也就保证了ViewModel的存活。</p>
+<p>所以在非跨配置的情况下，而导致Activity/Fragment销毁时，ViewModel也是会被销毁的。</p>
+<h2 id="viewmodel的参数传递有哪些方式">ViewModel的参数传递有哪些方式？</h2>
+<h2 id="如何实现fragment间共享viewmodel">如何实现Fragment间共享ViewModel？</h2>
+<h2 id="为什么导航时传参可以注入到savedstatehandle中">为什么导航时传参，可以注入到SavedStateHandle中？</h2>
+<h2 id="viewmodel如何与navigation组件配合使用">ViewModel如何与Navigation组件配合使用？</h2>
+<p>在 MVVM 架构下，ViewModel 默认是由框架（<code>ViewModelProvider</code>／<code>viewModels</code>）统一管理的，而它的无参构造也正是为了让框架能够“按需”创建。如果 ViewModel 需要依赖外部参数（比如一个 ID、一组配置、或者仓库对象等），就必须告诉框架如何“注入”这些参数──也就是自定义一个 Factory。</p>
+<h3 id="自定义-viewmodelproviderfactory">自定义 ViewModelProvider.Factory</h3>
+<pre><code class="language-kotlin">class MyViewModel(
+    private val userId: String
+) : ViewModel() {
+    // …业务逻辑
+}
+
+class MyViewModelFactory(
+    private val userId: String
+) : ViewModelProvider.Factory {
+    //override create
+    override fun &lt;T : ViewModel&gt; create(modelClass: Class&lt;T&gt;): T {
+        //是MyViewModel是modelClass的父类
+        if (modelClass.isAssignableFrom(MyViewModel::class.java)) {
+            @Suppress(&quot;UNCHECKED_CAST&quot;)
+            return MyViewModel(userId) as T
+        }
+        throw IllegalArgumentException(&quot;Unknown ViewModel class: ${modelClass.name}&quot;)
+    }
+}
+
+</code></pre>
+<h3 id="利用-navigation-与-savedstatehandle-传递参数">利用 Navigation 与 SavedStateHandle 传递参数</h3>
+<p>可以把「路由参数／Fragment 参数」直接通过 <code>SavedStateHandle</code> 传递给 <code>ViewModel</code>。官方也已经定义了<code>SavedStateViewModelFractory</code>，不需要自定义一个新的<code>ViewModelFractory</code>。</p>
+<pre><code class="language-kotlin">// ListFragment to ProfileFragment
+findNavController().navigate(
+    R.id.action_list_to_profile,
+    bundleOf(
+        &quot;userId&quot; to &quot;user-123&quot;,
+        &quot;showDetails&quot; to true
+    )
+)
+
+
+class MyViewModel(
+    private val state: SavedStateHandle
+) : ViewModel() {
+    // 通过 key 读取 state 里的参数
+    val userId: String = state.get&lt;String&gt;(&quot;userId&quot;)!!
+}
+</code></pre>
+<p>导航时传入Bundle，框架会帮你把 <code>userId</code> 写入 <code>SavedStateHandle</code>，你就可以直接取到。</p>
+<h3 id="使用-hilt-dagger2-自动注入">使用 Hilt / Dagger2 自动注入</h3>
+<pre><code class="language-kotlin">@HiltViewModel
+class MyViewModel @Inject constructor(
+    private val state: SavedStateHandle,
+    private val repo: UserRepository
+) : ViewModel() {
+    val userId: String = state[&quot;userId&quot;]!!
+    // …
+}
+
+//带有 @AndroidEntryPoint 注解的 activity 或 fragment 
+//就可以使用 ViewModelProvider 或 by viewModels() KTX 扩展照常获取 ViewModel 实例
+@AndroidEntryPoint
+class ExampleActivity : AppCompatActivity() {
+  private val myViewModel: MyViewModel by viewModels()
+  ...
+}
+</code></pre>
+<p>和利用 Navigation 与 SavedStateHandle 传递参数实现原理差不多（见问题四），都是通过<strong>委托的方式</strong>把传入的bundle传递给SavedStateHandle ，再能在ViewModel中获取。</p>
+<p>只不过<code>Navigation</code>只能处理具有<code>SavedStateHandle</code>、<code>Application</code>这两个参数或其一的<code>ViewModel</code>；而使用<code>Hilt</code>可以处理多个参数，只需要合理标记<code>@Inject</code>注解到其构造函数即可，<code>Hilt</code>会在编译期自动生成对应的<code>Factory</code>。</p>
+<p><strong>问题三</strong>：</p>
+<p>当你在 Fragment 中调用 <code>by viewModels()</code>（或 <code>by navGraphViewModels()</code>）时，底层会取当前的 <code>NavBackStackEntry</code> 作为 ViewModel 的宿主。</p>
+<pre><code class="language-kotlin">//NavController#navigate -&gt; NavBackStackEntry#create
+private fun navigate(
+    node: NavDestination,
+    //传入的bundle
+    args: Bundle?,
+    navOptions: NavOptions?,
+    navigatorExtras: Navigator.Extras?
+){
+    ...
+val backStackEntry = NavBackStackEntry.create(
+                        context,
+                        node,
+    					//传入的bundle
+                        finalArgs,
+                        hostLifecycleState,
+                        viewModel
+                    )
+    ...
+}
+//NavBackStackEntry#create -&gt; NavBackStackEntry构造函数 
+//注意NavBackStackEntry 实现了 SavedStateRegistryOwner,
+//HasDefaultViewModelProviderFactory
+public class NavBackStackEntry : 
+SavedStateRegistryOwner,
+HasDefaultViewModelProviderFactory{
+    public fun create(
+            context: Context?,
+            destination: NavDestination,
+            //bundle
+            arguments: Bundle? = null,
+            hostLifecycleState: Lifecycle.State = Lifecycle.State.CREATED,
+            viewModelStoreProvider: NavViewModelStoreProvider? = null,
+            id: String = UUID.randomUUID().toString(),
+            savedState: Bundle? = null
+        ): NavBackStackEntry =
+
+            NavBackStackEntry(
+                context,
+                destination,
+                //bundle
+                //构造参数中arguments被赋值给
+                //NavBackStackEntry的属性immutableArgs
+                arguments,
+                hostLifecycleState,
+                viewModelStoreProvider,
+                id,
+                savedState
+            )
+    }
+}
+
+//immutableArgs被赋值给arguments
+public val arguments: Bundle?
+    get() =
+        if (immutableArgs == null) {
+            null
+        } else {
+            Bundle(immutableArgs)
+        }
+
+//defaultViewModelCreationExtras 会被用到在创建ViewModel时
+//详见下面navGraphViewModels/viewModels
+override val defaultViewModelCreationExtras: CreationExtras
+    get() {
+        val extras = MutableCreationExtras()
+        (context?.applicationContext as? Application)?.let { application -&gt;
+            extras[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] = application
+        }
+        extras[SAVED_STATE_REGISTRY_OWNER_KEY] = this
+        extras[VIEW_MODEL_STORE_OWNER_KEY] = this
+        //可以看到arguments被通过DEFAULT_ARGS_KEY放入CreationExtras
+        arguments?.let { args -&gt; extras[DEFAULT_ARGS_KEY] = args }
+        return extras
+}
+
+//navGraphViewModels()/viewModels() -&gt;
+//CreationExtras#createSavedStateHandle()
+@MainThread
+public fun CreationExtras.createSavedStateHandle(): SavedStateHandle {
+	//...
+    //DEFAULT_ARGS_KEY，导航时传入的Bundle
+    //bundle
+    val defaultArgs = this[DEFAULT_ARGS_KEY]
+    val key = this[VIEW_MODEL_KEY] ?: throw IllegalArgumentException(
+        &quot;CreationExtras must have a value by `VIEW_MODEL_KEY`&quot;
+    )
+    return createSavedStateHandle(
+        savedStateRegistryOwner, viewModelStateRegistryOwner, key,
+        //bundle
+        defaultArgs
+    )
+}
+
+//SavedStateHandleSupport#createSavedStateHandle-&gt;SavedStateHandle#createHandle
+private fun createSavedStateHandle(
+    savedStateRegistryOwner: SavedStateRegistryOwner,
+    viewModelStoreOwner: ViewModelStoreOwner,
+    key: String,
+    defaultArgs: Bundle?
+): SavedStateHandle {
+	//...
+    return viewModel.handles[key] ?: SavedStateHandle.createHandle(
+        provider.consumeRestoredStateForKey(key), 
+        //bundle
+        defaultArgs
+    ).also { viewModel.handles[key] = it }
+}
+
+//SavedStateHandle#createHandle
+fun createHandle(restoredState: Bundle?, defaultState: Bundle?): SavedStateHandle {
+	if (restoredState == null) {
+ 		return if (defaultState == null) {
+ 			SavedStateHandle()
+ 		} else {
+ 			val state: MutableMap&lt;String, Any?&gt; = HashMap()
+ 			for (key in defaultState.keySet()) {
+                //bundle
+ 				state[key] = defaultState[key]
+ 			}
+ 			SavedStateHandle(state)
+ 		}
+	}
+//...
+ }
+
+//如果通过navGraphViewModels/viewModels 委托创建ViewModel
+//就会传递defaultViewModelCreationExtras
+//使得ViewModel可以获得传入的Bundle
+@MainThread
+public inline fun &lt;reified VM : ViewModel&gt; Fragment.navGraphViewModels(
+    @IdRes navGraphId: Int,
+    noinline extrasProducer: (() -&gt; CreationExtras)? = null,
+    noinline factoryProducer: (() -&gt; ViewModelProvider.Factory)? = null
+): Lazy&lt;VM&gt; {
+    val backStackEntry by lazy { findNavController().getBackStackEntry(navGraphId) }
+    val storeProducer: () -&gt; ViewModelStore = { backStackEntry.viewModelStore }
+    return createViewModelLazy(
+        VM::class,
+        storeProducer,
+        { extrasProducer?.invoke() ?: backStackEntry.defaultViewModelCreationExtras },
+        factoryProducer ?: { backStackEntry.defaultViewModelProviderFactory }
+    )
+}
+
+@MainThread
+public inline fun &lt;reified VM : ViewModel&gt; ComponentActivity.viewModels(
+    noinline extrasProducer: (() -&gt; CreationExtras)? = null,
+    noinline factoryProducer: (() -&gt; Factory)? = null
+): Lazy&lt;VM&gt; {
+    val factoryPromise = factoryProducer ?: {
+        defaultViewModelProviderFactory
+    }
+
+    return ViewModelLazy(
+        VM::class,
+        { viewModelStore },
+        factoryPromise,
+        { extrasProducer?.invoke() ?: this.defaultViewModelCreationExtras }
+    )
+}
+</code></pre>
+<p><strong>问题四</strong>：</p>
+<p>属于同一个导航子图，就能共享 <code>SharedViewModel</code>。</p>
+<p>Navigation 组件为导航图（NavGraph）生成了一个特殊的 <code>NavBackStackEntry</code>，它本身就是一个 <code>ViewModelStoreOwner</code>。</p>
+<p>当在 Fragment 中写</p>
+<pre><code class="language-kotlin">val vm: SharedViewModel by navGraphViewModels(R.id.my_nav_graph)
+</code></pre>
+<p>委托会调用</p>
+<pre><code class="language-kotlin">findNavController().getBackStackEntry(R.id.my_nav_graph)
+</code></pre>
+<p>拿到那个NavGraph级别的<code>NavBackStackEntry</code>，并使用它的 <code>ViewModelStore</code>。这样，所有同一个<code>NavGraph</code>内的 Fragment 都“挂”在同一个<code>NavBackStackEntry</code>上，自然共享同一份<code>ViewModelStore</code>。</p>
+<p>同时，在 MVVM 架构中，<strong>不推荐直接在 ViewModel 中发起导航操作</strong>，但可以通过状态流（如 StateFlow）或事件机制将导航指令<strong>传递给 UI 层执行</strong>。</p>
+<p><strong>1.使用密封类定义导航事件</strong></p>
+<pre><code class="language-kotlin">// 定义导航事件
+sealed class NavigationEvent {
+    data class ToDestination(val route: String) : NavigationEvent()
+    object PopBackStack : NavigationEvent()
+    data class ShowDialog(val message: String) : NavigationEvent()
+}
+
+class MyViewModel : ViewModel() {
+    // 使用 SharedFlow 避免事件重放
+    private val _navigationEvents = MutableSharedFlow&lt;NavigationEvent&gt;()
+    val navigationEvents = _navigationEvents.asSharedFlow()
+
+    fun onButtonClick() {
+        viewModelScope.launch {
+            _navigationEvents.emit(NavigationEvent.ToDestination(&quot;detail_screen&quot;))
+        }
+    }
+}
+</code></pre>
+<p><strong>UI 层处理导航事件</strong></p>
+<pre><code class="language-kotlin">// Activity/Fragment 中
+lifecycleScope.launch {
+    repeatOnLifecycle(Lifecycle.State.STARTED) {
+        viewModel.navigationEvents.collect { event -&gt;
+            when (event) {
+                is NavigationEvent.ToDestination -&gt; {
+                    findNavController().navigate(event.route)
+                }
+                NavigationEvent.PopBackStack -&gt; {
+                    findNavController().popBackStack()
+                }
+                is NavigationEvent.ShowDialog -&gt; {
+                    showDialog(event.message)
+                }
+            }
+        }
+    }
+}
+</code></pre>
+<p>再或者是，<strong>2.使用事件包装类（避免事件重放问题）</strong></p>
+<pre><code class="language-kotlin">class Event&lt;out T&gt;(private val content: T) {
+    var isHandled = false
+        private set
+
+    fun getContentIfNotHandled(): T? {
+        return if (isHandled) null else {
+            isHandled = true
+            content
+        }
+    }
+}
+
+class MyViewModel : ViewModel() {
+    private val _navigateEvent = MutableStateFlow&lt;Event&lt;String&gt;?&gt;(null)
+    val navigateEvent: StateFlow&lt;Event&lt;String&gt;?&gt; = _navigateEvent
+
+    fun triggerNavigation() {
+        _navigateEvent.value = Event(&quot;detail_screen&quot;)
+    }
+}
+
+// UI 层处理
+lifecycleScope.launch {
+    viewModel.navigateEvent
+        .filterNotNull()
+        .collect { event -&gt;
+            event.getContentIfNotHandled()?.let { route -&gt;
+                findNavController().navigate(route)
+            }
+        }
+}
+</code></pre>
+<hr>
+<h2 id="懒加载-委托创建viewmodel的原理">懒加载、委托创建ViewModel的原理？</h2>
+<p>//TODO</p>
+<p>其实算是语法糖了，看看源码就能知道，over。</p>
+<h2 id="viewmodel的scope机制activity级-vs-fragment级">ViewModel的Scope机制（Activity级 vs Fragment级）？</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐 Scope</th>
+<th>使用方法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单个 Fragment 内部状态管理</td>
+<td>Fragment 级</td>
+<td>viewModels()</td>
+</tr>
+<tr>
+<td>多 Fragment 以及 Activity共享数据</td>
+<td>Activity 级</td>
+<td>activityViewModels()</td>
+</tr>
+<tr>
+<td>同一导航图内的 Fragment共享数据</td>
+<td>NavGraph级</td>
+<td>navGraphViewModels()</td>
+</tr>
+</tbody>
+</table>
+<h2 id="多线程环境下操作-viewmodel-是否安全">多线程环境下操作 ViewModel 是否安全？</h2>
+<p>不安全。</p>
+<p><strong>ViewModel 自身不是线程安全容器</strong>。<code>ViewModel</code> 只是一个普通的对象；它内部的数据结构（<code>MutableLiveData</code>、<code>MutableStateFlow</code>、自建集合等）也各有线程约束。</p>
+<p>对于多线程环境，注意使用JUC框架、Livedata、MutableStateFlow、协程切换上下文，保证尽可能的减少竞态。</p>
+<h2 id="对比-viewmodel-与-presenter-的异同">对比 ViewModel 与 Presenter 的异同？</h2>
+<p><strong>相同点</strong></p>
+<ol>
+<li><strong>职责定位</strong>：都是位于 UI（View）与数据（Model）之间的“中介”，负责将 Model 转换为 View 能直接使用的形式，并处理部分展示逻辑。</li>
+<li><strong>解耦效果</strong>：都能让 View 保持轻量、可测试，将业务或展示逻辑剥离到独立的组件中。</li>
+<li><strong>易于单元测试</strong>：由于不直接依赖具体的 View 实现，Presenter 和 ViewModel 都可以通过模拟接口/绑定进行单元测试。</li>
+</ol>
+<p><strong>差异</strong></p>
+<p><strong>1. 与视图的通信方式</strong></p>
+<ul>
+<li><strong>Presenter</strong>
+<ul>
+<li><strong>主动控制视图</strong>：通过接口（如 <code>IView</code>）直接调用视图方法更新UI（例：<code>view.showData(data)</code>）。需为每个视图定义接口，模板代码较多。</li>
+<li><strong>强耦合</strong>：需要手动绑定/解绑视图引用（在 <code>onDestroy()</code> 中解绑避免泄漏）。</li>
+</ul>
+</li>
+<li><strong>ViewModel</strong>
+<ul>
+<li><strong>数据驱动</strong>：通过可观察数据（如 <code>LiveData</code>、<code>StateFlow</code>）暴露状态，视图<strong>主动订阅</strong>数据变化。与 <code>LiveData</code>/<code>Flow</code> 结合，使用观察者模式，减少模板代码。</li>
+<li><strong>解耦</strong>：不持有视图引用，由框架自动管理生命周期（避免内存泄漏）。</li>
+</ul>
+</li>
+</ul>
+<p><strong>2. 生命周期管理</strong></p>
+<ul>
+<li><strong>Presenter</strong>
+<ul>
+<li>需手动处理生命周期：在 <code>onCreate()</code> 中初始化，在 <code>onDestroy()</code> 中销毁，配置变更（如旋转屏幕）时需自行恢复数据。</li>
+</ul>
+</li>
+<li><strong>ViewModel</strong>
+<ul>
+<li><strong>内置生命周期感知</strong>：由于有官方提供的ViewModel框架，能够自动关联 Activity/Fragment 生命周期，配置变更时保留实例（无需手动恢复数据）。</li>
+<li>通过 <code>ViewModelStore</code> 管理，在Activity/Fragment主动销毁时自动清理。</li>
+</ul>
+</li>
+</ul>
+<p><strong>3. 数据保存能力</strong></p>
+<ul>
+<li><strong>Presenter</strong>
+<ul>
+<li>通常不负责数据持久化，需依赖外部组件保存状态。</li>
+</ul>
+</li>
+<li><strong>ViewModel</strong>
+<ul>
+<li>配合<code>SavedStateHandle</code>支持临时状态保存：在配置变更期间保留数据（例如用户输入的表单内容）。</li>
+</ul>
+</li>
+</ul>
+<h2 id="viewmodel-在-jetpack-compose-中的应用变化">ViewModel 在 Jetpack Compose 中的应用变化？</h2>
+<p>hilt + compose_navigation 的使用。</p>
+<p>如果使用<code>NavAppBar</code>（类似的底部导航UI组件）进行导航，对初始导航页面（底部 Tab），应该<strong>使用<code>hiltViewModel()</code>委托创建<code>ViewModel</code>，同时传入 <code>NavBackStackEntry</code></strong>，把<code>ViewModel</code>绑到<strong>根导航图</strong>上，这样初始导航页面的<code>ViewModel</code>就不会因为来回切换Tab，而被销毁；</p>
+<pre><code class="language-kotlin">NavHost(...){
+    // 拿到根图对应的 BackStackEntry
+    val rootEntry =  navController.getBackStackEntry(navController.graph.id)
+
+    composable(...){
+        HomeScreen(hiltViewModel(rootEntry))
+    }
+}
+</code></pre>
+<p><strong>同时注意</strong>：在navController.navigate时，是否要<code>saveState</code>、<code>restoreState</code>，决定 <code>Compose</code> <strong>局部 UI 状态</strong>在<strong>导航进出后</strong>是否能够恢复。（<code>saveState</code>、<code>restoreState</code>与<code>SavedStateHandle</code>无关，这是<code>Compose</code>的<code>SaveableStateRegistry</code>机制）</p>
+<p>保存、恢复的只有<strong>可组合函数</strong>状态，例如： <code>LazyListState</code>、<code>TextField</code> 的输入内容等；如果要保存其他<strong>非可组合函数状态</strong>，请放入ViewModel中，以及SavedStateHandle。</p>
+<p>否则UI状态会不见，导致体验变差。</p>
+<p>第二层的导航层（初始导航层（底部 Tab）的子页面）：</p>
+<table>
+<thead>
+<tr>
+<th>作用域</th>
+<th>何时选用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>根导航图</strong></td>
+<td>当“初始导航层（底部 Tab）”和它的所有子页面都要共享同一份数据时，用 <code>hiltViewModel(owner = rootEntry)</code> 。这会将 VM 绑定到<strong>根导航图</strong>的 <code>ViewModelStore</code>。</td>
+</tr>
+<tr>
+<td><strong>子页面 NavBackStackEntry</strong></td>
+<td>如果子页面逻辑和数据只在该页面内使用，且无须其他兄弟页面/Tab 拉取同一份 VM，就用默认的 <code>hiltViewModel()</code>。它会把 VM 存到「当前路由」对应的 BackStackEntry。</td>
+</tr>
+</tbody>
+</table>
+<h1 id="参考">参考</h1>
+<blockquote>
+<p>https://developer.android.com/training/dependency-injection/hilt-jetpack?hl=zh-cn#kotlin</p>
+<p>https://juejin.cn/post/7072541180667363358</p>
+</blockquote>
+<h1 id="后记">后记</h1>
+<p>算是难产了，<code>ViewModel</code>的源码阅读记录，写了快两个月，中间又去写了<code>SavedStateHandle</code>的源码阅读记录，网上对<code>SavedStateHandle</code>的解析不是很多，或者不够详细，对于<code>Leacy</code>部分没有解释，大模型也是一问一个不吱声，也是没想到能写这么久。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E5%8F%91%E7%8E%B0%E9%97%AE%E9%A2%98">发现问题</a></li>
+<li><a href="#%E8%A7%A3%E5%86%B3%E6%80%9D%E8%B7%AF">解决思路</a>
+<ul>
+<li><a href="#%E6%A0%B8%E5%BF%83%E9%9C%80%E6%B1%82">核心需求</a></li>
+<li><a href="#%E5%85%B3%E9%94%AE%E6%80%9D%E8%B7%AF">关键思路</a></li>
+</ul>
+</li>
+<li><a href="#%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88%E6%A0%B8%E5%BF%83%E6%BA%90%E7%A0%81">解决方案（核心源码）</a>
+<ul>
+<li><a href="#%E6%A0%B8%E5%BF%83%E7%B1%BB%E4%B8%8E%E6%8E%A5%E5%8F%A3"><strong>核心类与接口</strong></a></li>
+<li><a href="#%E6%BA%90%E7%A0%81%E6%B5%81%E7%A8%8B%E5%9B%BE%E5%85%B3%E9%94%AE%E6%B5%81%E7%A8%8B">源码流程图（关键流程）</a></li>
+<li><a href="#%E6%97%B6%E5%BA%8F%E5%9B%BE">时序图</a>
+<ul>
+<li><a href="#viewmodelstore-bundle%E7%9A%84%E4%BF%9D%E5%AD%98%E4%B8%8E%E6%81%A2%E5%A4%8D">ViewModelStore、Bundle的保存与恢复</a></li>
+<li><a href="#viewmodel%E7%BB%84%E4%BB%B6%E5%BA%93%E8%BF%90%E4%BD%9C">ViewModel组件库运作</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E6%B3%A8%E6%84%8F">注意</a>
+<ul>
+<li><a href="#%E5%B7%A5%E5%8E%82%E6%A8%A1%E5%BC%8F%E5%9C%A8-viewmodel-%E4%B8%AD%E7%9A%84%E5%BA%94%E7%94%A8%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%8D%E8%83%BD%E7%9B%B4%E6%8E%A5%E5%AE%9E%E4%BE%8B%E5%8C%96viewmodel">工厂模式在 ViewModel 中的应用？为什么不能直接实例化ViewModel？</a></li>
+<li><a href="#%E6%9C%89%E5%93%AA%E4%BA%9B%E7%B1%BB%E5%9E%8B%E7%9A%84factory">有哪些类型的Factory？</a></li>
+<li><a href="#viewmodelstore-%E7%9A%84%E5%86%85%E9%83%A8%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84%E6%98%AF%E4%BB%80%E4%B9%88">ViewModelStore 的内部数据结构是什么？</a></li>
+<li><a href="#viewmodel%E7%9A%84%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F%E4%B8%8Eactivity%E6%9C%89%E4%BD%95%E4%B8%8D%E5%90%8C">ViewModel的生命周期与Activity有何不同？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88viewmodel%E5%8F%AF%E4%BB%A5%E4%BF%9D%E5%AD%98%E5%B1%8F%E5%B9%95%E6%97%8B%E8%BD%AC%E6%97%B6%E7%9A%84%E6%95%B0%E6%8D%AE%E8%A7%A3%E9%87%8Aviewmodelstore%E7%9A%84%E5%AD%98%E5%82%A8%E5%8E%9F%E7%90%86">为什么ViewModel可以保存屏幕旋转时的数据/解释ViewModelStore的存储原理？</a></li>
+<li><a href="#fragment%E5%88%9B%E5%BB%BAviewmodel%E7%9A%84%E6%B5%81%E7%A8%8B">Fragment创建ViewModel的流程？</a></li>
+<li><a href="#viewmodel%E5%A6%82%E4%BD%95%E9%81%BF%E5%85%8D%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F">ViewModel如何避免内存泄漏？</a></li>
+<li><a href="#viewmodel-%E4%B8%AD%E5%90%AF%E5%8A%A8%E5%8D%8F%E7%A8%8B%E9%9C%80%E8%A6%81%E6%B3%A8%E6%84%8F%E4%BB%80%E4%B9%88viewmodel-%E4%B8%8E-livedataflow-%E7%9A%84%E6%9C%80%E4%BD%B3%E5%AE%9E%E8%B7%B5">ViewModel 中启动协程需要注意什么？ViewModel 与 LiveData/Flow 的最佳实践？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88-viewmodel-%E4%B8%8D%E7%9B%B4%E6%8E%A5%E6%8C%81%E6%9C%89-contextandroidviewmodel%E4%B8%8E%E6%99%AE%E9%80%9Aviewmodel%E7%9A%84%E5%8C%BA%E5%88%AB">为什么 ViewModel 不直接持有 Context？AndroidViewModel与普通ViewModel的区别？</a></li>
+<li><a href="#viewmodel%E5%9C%A8%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E4%BC%9A%E8%A2%AB%E9%94%80%E6%AF%81%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E4%B8%8D%E8%A2%AB%E9%94%80%E6%AF%81">ViewModel在什么时候会被销毁？什么时候不被销毁？</a></li>
+<li><a href="#viewmodel%E7%9A%84%E5%8F%82%E6%95%B0%E4%BC%A0%E9%80%92%E6%9C%89%E5%93%AA%E4%BA%9B%E6%96%B9%E5%BC%8F">ViewModel的参数传递有哪些方式？</a></li>
+<li><a href="#%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0fragment%E9%97%B4%E5%85%B1%E4%BA%ABviewmodel">如何实现Fragment间共享ViewModel？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E5%AF%BC%E8%88%AA%E6%97%B6%E4%BC%A0%E5%8F%82%E5%8F%AF%E4%BB%A5%E6%B3%A8%E5%85%A5%E5%88%B0savedstatehandle%E4%B8%AD">为什么导航时传参，可以注入到SavedStateHandle中？</a></li>
+<li><a href="#viewmodel%E5%A6%82%E4%BD%95%E4%B8%8Enavigation%E7%BB%84%E4%BB%B6%E9%85%8D%E5%90%88%E4%BD%BF%E7%94%A8">ViewModel如何与Navigation组件配合使用？</a>
+<ul>
+<li><a href="#%E8%87%AA%E5%AE%9A%E4%B9%89-viewmodelproviderfactory">自定义 ViewModelProvider.Factory</a></li>
+<li><a href="#%E5%88%A9%E7%94%A8-navigation-%E4%B8%8E-savedstatehandle-%E4%BC%A0%E9%80%92%E5%8F%82%E6%95%B0">利用 Navigation 与 SavedStateHandle 传递参数</a></li>
+<li><a href="#%E4%BD%BF%E7%94%A8-hilt-dagger2-%E8%87%AA%E5%8A%A8%E6%B3%A8%E5%85%A5">使用 Hilt / Dagger2 自动注入</a></li>
+</ul>
+</li>
+<li><a href="#%E6%87%92%E5%8A%A0%E8%BD%BD-%E5%A7%94%E6%89%98%E5%88%9B%E5%BB%BAviewmodel%E7%9A%84%E5%8E%9F%E7%90%86">懒加载、委托创建ViewModel的原理？</a></li>
+<li><a href="#viewmodel%E7%9A%84scope%E6%9C%BA%E5%88%B6activity%E7%BA%A7-vs-fragment%E7%BA%A7">ViewModel的Scope机制（Activity级 vs Fragment级）？</a></li>
+<li><a href="#%E5%A4%9A%E7%BA%BF%E7%A8%8B%E7%8E%AF%E5%A2%83%E4%B8%8B%E6%93%8D%E4%BD%9C-viewmodel-%E6%98%AF%E5%90%A6%E5%AE%89%E5%85%A8">多线程环境下操作 ViewModel 是否安全？</a></li>
+<li><a href="#%E5%AF%B9%E6%AF%94-viewmodel-%E4%B8%8E-presenter-%E7%9A%84%E5%BC%82%E5%90%8C">对比 ViewModel 与 Presenter 的异同？</a></li>
+<li><a href="#viewmodel-%E5%9C%A8-jetpack-compose-%E4%B8%AD%E7%9A%84%E5%BA%94%E7%94%A8%E5%8F%98%E5%8C%96">ViewModel 在 Jetpack Compose 中的应用变化？</a></li>
+</ul>
+</li>
+<li><a href="#%E5%8F%82%E8%80%83">参考</a></li>
+<li><a href="#%E5%90%8E%E8%AE%B0">后记</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://kanyewestforreal.github.io/post/android-jetpack3-savedstatehandle/">
+              <h3 class="post-title">
+                Android Jetpack(3)  SaveStateHandle源码阅读记录
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  This blog is just for me to record the questions, which in my developing.
+  <div class="footer-right">
+    <a class="rss" href="https://kanyewestforreal.github.io//atom.xml" target="_blank">
+      <i class="ri-rss-line"></i> RSS
+    </a>
+    <span id="busuanzi_container_site_pv" style="margin-top: 8px;">
+      本站总访问量<span id="busuanzi_value_site_pv"></span>次
+    </span>
+  </div>
+  <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      // hljs.initHighlightingOnLoad()
+
+      // let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // // This should probably be throttled.
+      // // Especially because it triggers during smooth scrolling.
+      // // https://lodash.com/docs/4.17.10#throttle
+      // // You could do like...
+      // // window.addEventListener("scroll", () => {
+      // //    _.throttle(doThatStuff, 100);
+      // // });
+      // // Only not doing it here to keep this Pen dependency-free.
+
+      // window.addEventListener("scroll", event => {
+      //   let fromTop = window.scrollY;
+
+      //   mainNavLinks.forEach((link, index) => {
+      //     let section = document.getElementById(decodeURI(link.hash).substring(1));
+      //     let nextSection = null
+      //     if (mainNavLinks[index + 1]) {
+      //       nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+      //     }
+      //     if (section.offsetTop <= fromTop) {
+      //       if (nextSection) {
+      //         if (nextSection.offsetTop > fromTop) {
+      //           link.classList.add("current");
+      //         } else {
+      //           link.classList.remove("current");    
+      //         }
+      //       } else {
+      //         link.classList.add("current");
+      //       }
+      //     } else {
+      //       link.classList.remove("current");
+      //     }
+      //   });
+      // });
+
+    </script>
+  </body>
+</html>

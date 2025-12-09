@@ -1,0 +1,844 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HashMap 知识点 | Grinofith&#39;s Blog</title>
+<link rel="shortcut icon" href="https://kanyewestforreal.github.io//favicon.ico?v=1765275803375">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://kanyewestforreal.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="HashMap 知识点 | Grinofith&#39;s Blog - Atom Feed" href="https://kanyewestforreal.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="内部数据结构
+数组 + 链表/红黑树
+
+JDK 1.8的优化
+HashMap中Entry的链表长度大于阈值（默认为 8）时，就会将链表转化为红黑树（将链表转换成红黑树前会判断，如果当前数组的长度小于 64，那么会选择先进行数组扩容，而不是转..." />
+    <meta name="keywords" content="Java" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <!-- <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script> -->
+    <script src="//cdn.jsdelivr.net/npm/leancloud-storage@4.13.2/dist/av-min.js"></script>
+    <script src="/media/js/read_mark.js"></script>
+    <script src="/media/js/highlight/highlight.min.js"></script>
+    <script src="/media/js/sroll_markdown_titile_list.js"></script>
+    <link rel="stylesheet" type="text/css" href="/media/js/highlight/styles/atom-one-dark.css">
+    <script>hljs.highlightAll();</script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://kanyewestforreal.github.io/">
+  <img class="avatar" src="https://kanyewestforreal.github.io//images/avatar.png?v=1765275803375" alt="">
+  </a>
+  <h1 class="site-title">
+    Grinofith&#39;s Blog
+  </h1>
+  <p class="site-description">
+    The key is seriously reflecting.
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              HashMap 知识点
+            </h2>
+            <div class="post-info">
+              <span>
+                2025-02-24
+              </span>
+              <span class="post-views">
+                  <span >阅读量：</span>
+                  <span id="dynamic-views-counter"></span>
+              </span>
+              <span>
+                22 min read
+              </span>
+              
+                <a href="https://kanyewestforreal.github.io/tag/java/" class="post-tag">
+                  # Java
+                </a>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://kanyewestforreal.github.io//post-images/hashmap-knowledge.jpg" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="内部数据结构">内部数据结构</h1>
+<p>数组 + 链表/红黑树</p>
+<figure data-type="image" tabindex="1"><img src="https://kanyewestforreal.github.io//post-images/java-collection-hashmap8.png" alt="java-collection-hashmap8" loading="lazy"></figure>
+<h1 id="jdk-18的优化">JDK 1.8的优化</h1>
+<p>HashMap中Entry的链表长度大于阈值（默认为 8）时，就会将链表转化为红黑树（将链表转换成红黑树前会判断，如果当前数组的长度小于 64，那么会选择先进行数组扩容，而不是转换为红黑树），以减少搜索时间。</p>
+<h1 id="关键字段影响性能的重要参数">关键字段/影响性能的重要参数</h1>
+<h2 id="int-size">int size</h2>
+<p><strong>作用</strong>：当前键值对数量。</p>
+<p><strong>设计原因</strong>：用于判断是否超过 <code>threshold</code> 触发扩容。</p>
+<p><strong>注意</strong>：不是桶的数量，而是总元素数。</p>
+<h2 id="int-threshold">int threshold</h2>
+<p><strong>作用</strong>：触发下一次扩容的阈值 = <code>newCap * loadFactor</code>（向下取整）。</p>
+<p>在构造函数中如果显式指定 初始容量 <code>initialCapacity</code> 时，<code>threshold</code> 临时保存 初始容量 <code>initialCapacity</code>（通过 <code>tableSizeFor</code> 计算）。复用字段，减少内存占用。</p>
+<p>一旦 <code>table</code> 被初始化，<code>resize</code>进行计算设置，<code>threshold</code> 就表示真正的扩容阈值。</p>
+<p><strong><code>HashMap</code>中并没有显式的<code>Capacity</code>字段，一般使用都是用<code>table.length</code>代替。</strong></p>
+<p><strong>只有在<code>resize</code>时，计算<code>threshold</code>时，<code>capacity</code>的概念才会凸显</strong>，<code>newCap</code>来源有：<code>DEFAULT_INITIAL_CAPACITY = 16</code>、<code>table.length</code>（现在容量）、<code>oldThreshold</code>（上一次的阈值）。</p>
+<h2 id="final-float-loadfactor">final float loadFactor</h2>
+<p><strong>作用</strong>：负载因子，控制扩容的“松紧度”。</p>
+<p><strong>设计为 final</strong>：一旦构造完成就不能修改，保证一致性。</p>
+<p>权衡：</p>
+<ul>
+<li>高负载因子 → 更省内存，但冲突多；</li>
+<li>低负载因子 → 更少冲突，但更耗内存。</li>
+</ul>
+<h2 id="treeify_threshold">TREEIFY_THRESHOLD</h2>
+<p>初始化为8，如果桶上的链表元素数量<strong>大于等于8</strong>，就会树化，链表变成红黑树。</p>
+<h2 id="untreeify_threshold">UNTREEIFY_THRESHOLD</h2>
+<p>初始化为6，如果桶上的红黑树元素数量<strong>小于等于6</strong>，就会去树化，红黑树变成链表。</p>
+<h2 id="为什么树化去树化的阈值之间要有差值">为什么树化/去树化的阈值之间要有差值？</h2>
+<p>之所以设计中间有差值，是因为：<strong>防止频繁的插入、删除，而出现频繁的树化/去树化的操作发生，影响HashMap性能。</strong></p>
+<h1 id="允许空键空值">允许空键空值？</h1>
+<p>允许，但是空键会覆盖。</p>
+<p>当<code>key == null</code>时，<code>index</code> 为 0，如果<code>key</code> 再次为 <code>null</code>，<code>index</code>返回0，那么数据就会覆盖。</p>
+<pre><code class="language-java">static final int hash(Object key) {
+    int h;
+    return (key == null) ? 0 : (h = key.hashCode()) ^ (h &gt;&gt;&gt; 16);
+}
+//source：https://github.com/openjdk/jdk/blob/master/src/java.base/share/classes/java/util/HashMap.java#L336C1-L339C6
+</code></pre>
+<hr>
+<h1 id="工作原理">工作原理</h1>
+<h2 id="put方法的原理">Put方法的原理</h2>
+<pre><code class="language-java">public V put(K key, V value) {
+    return putVal(hash(key), key, value, false, true);
+}
+
+public V putIfAbsent(K key, V value) {
+    return putVal(hash(key), key, value, true, true);
+}
+
+//onlyIfAbsent 如果是 true，那么只有在不存在该 key 时才会进行 put 操作
+final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
+               boolean evict) {
+    Node&lt;K,V&gt;[] tab; Node&lt;K,V&gt; p; int n, i;
+    //懒初始化：table 在首次 put 时才分配（节省内存）。
+    if ((tab = table) == null || (n = tab.length) == 0)
+        //调用 resize() 进行初始化（容量为 16）或扩容（*2）。
+        n = (tab = resize()).length;
+    //若目标桶为空，直接创建新节点。
+    if ((p = tab[i = (n - 1) &amp; hash]) == null)
+        tab[i] = newNode(hash, key, value, null);
+    //桶非空：处理冲突
+    else {
+        Node&lt;K,V&gt; e; K k;
+        // (a) 首节点匹配
+        if (p.hash == hash &amp;&amp;
+            ((k = p.key) == key || (key != null &amp;&amp; key.equals(k))))
+            e = p; //后续更新值
+        else if (p instanceof TreeNode)
+        //(b) 红黑树处理：
+			//调用 TreeNode.putTreeVal(...)，在树中查找或插入。
+            //先按 hashCode，再按 compareTo（若 key 实现 Comparable），最后用 tieBreakOrder（类名 + identityHashCode）。
+            e = ((TreeNode&lt;K,V&gt;)p).putTreeVal(this, tab, hash, key, value);
+        else {
+        //(c) 链表处理 无限循环
+            for (int binCount = 0; ; ++binCount) {
+                //检查是否遍历到了尾部
+                if ((e = p.next) == null) {
+                    //先插入
+                    p.next = newNode(hash, key, value, null);
+                    //插入完成后，检查是否要树化（链表长度大于等于8，树化）
+                    if (binCount &gt;= TREEIFY_THRESHOLD - 1) // -1 是循环从0开始
+                        //调用 treeifyBin(tab, hash) 尝试树化（但可能先扩容）。
+                        treeifyBin(tab, hash);
+                    break;
+                }
+                //遍历，有节点匹配e
+                if (e.hash == hash &amp;&amp;
+                    ((k = e.key) == key || (key != null &amp;&amp; key.equals(k))))
+                    break;
+                //p指向下一个条目，方便e = p.next继续检查
+                p = e;
+            }
+        }
+        //更新已有节点的值
+        if (e != null) { // existing mapping for key
+            V oldValue = e.value;
+            //onlyIfAbsent=true（如 putIfAbsent）且 oldValue 非 null，则不覆盖。
+            //否则更新值
+            if (!onlyIfAbsent || oldValue == null)
+                e.value = value;
+            //调用 afterNodeAccess(e)：LinkedHashMap 用此实现 LRU（访问顺序）。
+            afterNodeAccess(e);
+            //返回旧值
+            return oldValue;
+        }
+    }
+    //更新计数、扩容、回调
+    ++modCount;
+    //size++ &gt; threshold：触发扩容。
+    if (++size &gt; threshold)
+        resize();
+    //afterNodeInsertion(evict)：LinkedHashMap 用此实现 removeEldestEntry。
+    afterNodeInsertion(evict);
+    return null;
+}
+</code></pre>
+<p>比如调用 <code>hashMap.put(&quot;book&quot;, 0)</code> ，插入一个Key为“book&quot;的元素，值为0。</p>
+<p>这时使用哈希函数hash(key)，可以计算出Entry(键值对对象) 的插入位置（index）。</p>
+<p>但是，因为HashMap的长度是有限的，当插入的Entry越来越多时，必然会出现index冲突的情况。</p>
+<p>这时候就想到用一个数组<code>table</code>做“挂钩”，把<code>Entry</code>对象设置为一个<code>Node</code>，<code>table</code>数组里每个元素存储的是一个链表的头结点Entry，每一个Entry对象通过Next指针指向它的下一个Entry节点。当新来的Entry映射到冲突的<strong>数组位置</strong>时，只需要插入到对应的链表即可。一个挂钩，下面挂着一条链子。</p>
+<figure data-type="image" tabindex="2"><img src="https://kanyewestforreal.github.io//post-images/hashmap_ds_detail.drawio.png" alt="hashmap_ds_detail.drawio" loading="lazy"></figure>
+<p>需要注意的是，新来的Entry节点插入链表时，使用的是<strong>头插法</strong>，是因为HashMap的发明者认为，<strong>后插入的Entry被查找的可能性更大</strong>，那么后插入的Entry放在桶的最上面，可以提高查找速度。</p>
+<h2 id="get方法的原理">Get方法的原理</h2>
+<pre><code class="language-java">public V get(Object key) {
+    Node&lt;K,V&gt; e;
+    return (e = getNode(key)) == null ? null : e.value;
+}
+//平均 O(1) 时间复杂度（hash find）；
+//在冲突严重时（树化后）退化为 O(log n)，而非 O(n)。
+final Node&lt;K,V&gt; getNode(Object key) {
+        Node&lt;K,V&gt;[] tab; Node&lt;K,V&gt; first, e; int n, hash; K k;
+    	//若未初始化，结束，直接返回 null
+        if ((tab = table) != null &amp;&amp; (n = tab.length) &gt; 0 &amp;&amp;
+            //如果桶为空（没有这个key），返回null
+            (first = tab[(n - 1) &amp; (hash = hash(key))]) != null) {
+            // 先检查桶第一个元素，如果hash 相等 且 key 相等，桶的第一个元素就是要找的
+            // hashCode() 不同则 key 必不同
+            if (first.hash == hash &amp;&amp;
+                //一个用 == 检查，一个用equals检查
+                ((k = first.key) == key || (key != null &amp;&amp; key.equals(k))))
+                return first;
+            //第一个元素不是
+            //处理链表或红黑树
+            if ((e = first.next) != null) {
+                //若是 TreeNode：
+                //调用 ((TreeNode)first).getTreeNode(hash, key)，进入红黑树查找。
+                if (first instanceof TreeNode)
+                    return ((TreeNode&lt;K,V&gt;)first).getTreeNode(hash, key);
+                //否则遍历链表，逐个比较。
+                do {
+                    if (e.hash == hash &amp;&amp;
+                        ((k = e.key) == key || (key != null &amp;&amp; key.equals(k))))
+                        return e;
+                } while ((e = e.next) != null);
+            }
+        }
+        return null;
+}
+</code></pre>
+<p>首先会把输入的Key做一次Hash映射，得到对应的index，</p>
+<p>由于刚才所说的Hash冲突，同一个位置有可能匹配到多个Entry，这时候就需要顺着对应链表的头节点，一个一个向下来查找。</p>
+<h2 id="初始化扩容">初始化/扩容</h2>
+<h3 id="什么时候会触发resize">什么时候会触发resize？</h3>
+<p><code>resize()</code> 在以下 <strong>两种主要场景</strong> 下被调用：</p>
+<h4 id="首次插入元素时的懒初始化">首次插入元素时的懒初始化</h4>
+<ul>
+<li>当使用默认构造函数 <code>new HashMap&lt;&gt;()</code> 创建对象时，<code>table</code> 并未分配内存（为 <code>null</code>）。</li>
+<li><strong>第一次调用 <code>put()</code></strong> 时，<code>putVal()</code> 中检测到 <code>table == null</code>，会调用 <code>resize()</code> 来初始化 <code>table</code> 为默认容量 <strong>16</strong>。</li>
+<li>这不是“扩容”，而是 <strong>初始化</strong>。</li>
+</ul>
+<blockquote>
+<p>✅ 触发条件：<code>table == null || table.length == 0</code></p>
+</blockquote>
+<h4 id="插入后元素数量超过阈值">插入后元素数量超过阈值</h4>
+<p>每次成功插入一个新键值对（即 size 增加），会检查：</p>
+<pre><code class="language-java">if (++size &gt; threshold)
+	resize();
+</code></pre>
+<p>其中 <code>threshold = newCap * loadFactor</code>（向下取整）。</p>
+<p>newCap来源有：<code>DEFAULT_INITIAL_CAPACITY = 16</code>、<code>tab.length</code>（现在容量）、<code>oldThreshold</code>（上一次的阈值）。</p>
+<p>例如：默认容量 16，负载因子 0.75 → <code>threshold = 12</code>，当 <code>size</code> 变为 <strong>13</strong> 时触发扩容。</p>
+<blockquote>
+<p>✅ 触发条件：<code>size &gt; threshold</code></p>
+</blockquote>
+<h4 id="批量插入如-putall-或构造时传入-map">批量插入（如 <code>putAll</code> 或构造时传入 Map）</h4>
+<p><code>putMapEntries()</code> 会根据 <code>m.size()</code> 预估容量，并可能提前扩容，避免后续频繁触发。</p>
+<h4 id="树化前容量不足时也会触发-resize-而非树化">树化前容量不足时也会触发 resize 而非树化</h4>
+<p>在 <code>treeifyBin()</code>中</p>
+<pre><code class="language-java">if (tab == null || (n = tab.length) &lt; MIN_TREEIFY_CAPACITY)
+	resize();
+</code></pre>
+<p>即使链表长度 ≥8，但若 <code>table.length &lt; 64</code>，优先 <strong>扩容</strong> 而不是树化。</p>
+<blockquote>
+<p>✅ 这是一种优化：扩容可能自然分散冲突，避免不必要的树结构开销。</p>
+</blockquote>
+<h3 id="resize方法介绍">resize方法介绍</h3>
+<pre><code class="language-java">final Node&lt;K,V&gt;[] resize() {
+    Node&lt;K,V&gt;[] oldTab = table;
+    int oldCap = (oldTab == null) ? 0 : oldTab.length;
+    int oldThr = threshold;
+    int newCap, newThr = 0;
+    //情况 A：已初始化，正常扩容
+    if (oldCap &gt; 0) {
+        //已经是最大容量了，但是触发resize扩容
+        //那么修改触发阈值threshold，不做其他操作
+        if (oldCap &gt;= MAXIMUM_CAPACITY) {
+            threshold = Integer.MAX_VALUE;
+            return oldTab;
+        }
+        //否则，没有达到最大容量
+        //扩容为 2 倍（保持 2 的幂）。
+        else if ((newCap = oldCap &lt;&lt; 1) &lt; MAXIMUM_CAPACITY &amp;&amp;
+                 oldCap &gt;= DEFAULT_INITIAL_CAPACITY)
+            //是大表了，oldCap &gt;= 16（避免小表过早扩容）
+            //双倍阈值threshold
+            newThr = oldThr &lt;&lt; 1;
+    }
+    //情况 B：未初始化，但 threshold &gt; 0
+    //（构造时指定了初始容量，则thresold = tableSizeFor(initialCapacity)）
+    else if (oldThr &gt; 0)
+  		//则 newCap = tableSizeFor(initialCapacity)
+        newCap = oldThr;
+    else {
+        //完全默认构造
+        newCap = DEFAULT_INITIAL_CAPACITY;//16
+        //16*0.75 = 12
+        //如果 size &gt; threshold 触发resize
+        newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
+    }
+    //如果是 情况A的小表 或者 情况B
+    //那么兜底，计算threshold
+    if (newThr == 0) {
+        float ft = (float)newCap * loadFactor;
+        newThr = (newCap &lt; MAXIMUM_CAPACITY &amp;&amp; ft &lt; (float)MAXIMUM_CAPACITY ?
+                  (int)ft : Integer.MAX_VALUE);
+    }
+    //更新threshold 下次扩容阈值
+    threshold = newThr;
+    @SuppressWarnings({&quot;rawtypes&quot;,&quot;unchecked&quot;})
+    //创建新表 类似JDK 1.7 HashMap transfer方法
+    Node&lt;K,V&gt;[] newTab = (Node&lt;K,V&gt;[])new Node[newCap];
+    table = newTab;
+    //迁移旧数据
+    if (oldTab != null) {
+        //依次遍历桶
+        for (int j = 0; j &lt; oldCap; ++j) {
+            Node&lt;K,V&gt; e;
+            if ((e = oldTab[j]) != null) {
+                oldTab[j] = null;
+                //情况 1：这个桶中只有一个节点（没有hash冲突，即没有链表、红黑树）
+                if (e.next == null)
+                    //直接 rehash 到新位置。
+                    newTab[e.hash &amp; (newCap - 1)] = e;
+                //情况 2：这个桶是红黑树
+                else if (e instanceof TreeNode)
+                    //调用 TreeNode.split()，将树节点按 hash &amp; oldCap 分为两组：
+					//低位组（lo）：保留在原索引 j
+					//高位组（hi）：迁移到 j + oldCap
+					//若分组后节点数 ≤6，则 untreeify（转回链表）。
+                    ((TreeNode&lt;K,V&gt;)e).split(this, newTab, j, oldCap);
+                else {
+                    //情况 3：这个桶是普通链表（重点！JDK8 改进）
+                    //尾插法
+                    //分两组迁移：基于 e.hash &amp; oldCap 判断是否要移动到高位桶。
+                    //低位组（lo）：保留在原索引 j
+					//高位组（hi）：迁移到 j + oldCap
+                    Node&lt;K,V&gt; loHead = null, loTail = null;
+                    Node&lt;K,V&gt; hiHead = null, hiTail = null;
+                    Node&lt;K,V&gt; next;
+                    do {
+                        next = e.next;
+                        if ((e.hash &amp; oldCap) == 0) {
+                            if (loTail == null)
+                                loHead = e;
+                            else
+                                //尾插
+                                loTail.next = e;
+                            loTail = e;
+                        }
+                        else {
+                            if (hiTail == null)
+                                hiHead = e;
+                            else
+                                //尾插
+                                hiTail.next = e;
+                            hiTail = e;
+                        }
+                    } while ((e = next) != null);
+                    
+                    if (loTail != null) {
+                        loTail.next = null;
+                        newTab[j] = loHead;
+                    }
+                    if (hiTail != null) {
+                        hiTail.next = null;
+                        newTab[j + oldCap] = hiHead;
+                    }
+                }
+            }
+        }
+    }
+    return newTab;
+}
+</code></pre>
+<h3 id="分组分裂问题">分组/分裂问题</h3>
+<h4 id="介绍">介绍</h4>
+<p>关于情况2、3中的，按高低位分组问题：</p>
+<p>当 <code>HashMap</code> 扩容时（比如从 16 → 32），桶的数量<code>tab.length</code>变多了。</p>
+<p>因为index = hash &amp;（n-1），index计算与桶的数量<code>tab.length</code>有关，原来在第 <code>i</code> 个桶里的元素，扩容后，<strong>不一定还在第 <code>i</code> 个桶</strong>，可能要移到新的桶中。</p>
+<p>所以必须<strong>重新计算每个元素的新位置</strong>，这个过程叫 <strong>rehash（重新哈希）</strong>。</p>
+<p>以扩容前，是<code>16 = 10000</code>举例，其掩码为 16 - 1 = 15 = 1111。</p>
+<p>考虑一个元素的 <code>hash</code> 值，比如：</p>
+<table>
+<thead>
+<tr>
+<th>Hash</th>
+<th>index = hash &amp; 1111（扩容前）</th>
+<th>index = hash &amp; 11111 （扩容后）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0 1011</code></td>
+<td><code>1011</code>= 11</td>
+<td><code>0 1011</code>= 11</td>
+</tr>
+<tr>
+<td><code>1 1011</code></td>
+<td><code>1011</code>= 11</td>
+<td><code>1 1011</code>= <strong>27</strong></td>
+</tr>
+</tbody>
+</table>
+<p>差别在于：<strong>hash 的第 4 位（从0开始计数）是 0 还是 1</strong>。</p>
+<p>所以，<code>oldCap = 16 = 1 0000</code> &amp; hash 来判断是否需要迁移到新桶。</p>
+<pre><code class="language-java">if ((hash &amp; oldCap) == 0) {
+    // 第4位是0 → 新索引 = 旧索引 → 低位组
+} else {
+    // 第4位是1 → 新索引 = 旧索引 + oldCap → 高位组
+}
+</code></pre>
+<h4 id="为什么要分组好处是什么">为什么要分组？好处是什么？</h4>
+<h5 id="避免重复计算-hash-和模运算">避免重复计算 hash 和模运算</h5>
+<ul>
+<li>不需要重新调用 <code>hash(key)</code> 或 <code>hash % newCap</code>。</li>
+<li>仅通过一次位与操作 <code>hash &amp; oldCap</code> 就能判断新位置。</li>
+<li><strong>性能极大提升</strong>，尤其在大数据量扩容时。</li>
+</ul>
+<h5 id="树节点也能高效分裂">树节点也能高效分裂</h5>
+<ul>
+<li>红黑树在扩容时，同样按 <code>hash &amp; oldCap</code> 分为两棵子树。</li>
+<li>分裂后，如果某棵树节点数 ≤6，会自动转回链表（节省内存）。</li>
+</ul>
+<h5 id="扩容是原地分组">扩容是“原地分组”</h5>
+<ul>
+<li>每个旧桶的元素<strong>只会去两个新桶之一</strong>：<code>j</code> 或 <code>j + oldCap</code>。</li>
+<li>不需要全局打乱，迁移过程高度局部化。</li>
+</ul>
+<h2 id="删除">删除</h2>
+<h2 id="树化">树化</h2>
+<h2 id="去树化链表化">去树化/链表化</h2>
+<h2 id="balance">Balance</h2>
+<p>//TODO</p>
+<h1 id="如何提升hashmap函数的查找-插入效率">如何提升<code>HashMap</code>函数的查找、插入效率？</h1>
+<p>我们知道从<code>Key</code>映射到<code>HashMap</code>的对应位置<code>Index</code>，会用到一个<code>hash(key)</code>函数。</p>
+<pre><code class="language-java">static final int hash(Object key) {
+    int h;
+    return (key == null) ? 0 : (h = key.hashCode()) ^ (h &gt;&gt;&gt; 16);
+}
+</code></pre>
+<p>两个<code>key</code>使用<code>hash</code>函数得到相同的<code>hash</code>，表示发生了<code>hash</code>碰撞。</p>
+<p>如果<code>hash</code>算法计算结果越分散均匀，<strong><code>Hash</code>碰撞的概率就越小，那么<code>hashmap</code>的存取效率就会越高</strong>。（不用处理链表/红黑树）</p>
+<p>明显的，<strong><code>hash</code> 计算的速度越快，那么<code>hashmap</code>的存取效率也就会越高。</strong></p>
+<p>所有提高效率都可以从这两点入手。</p>
+<h2 id="为什么hash函数要进行-异或-位运算">为什么hash函数要进行 异或、位运算？</h2>
+<p>在hash函数中，进行扰动，可以提升hash的随机性，减少hash碰撞。</p>
+<pre><code class="language-java">static final int hash(Object key) {
+    int h;
+    return (key == null) ? 0 : (h = key.hashCode()) ^ (h &gt;&gt;&gt; 16);
+}
+</code></pre>
+<p><code>int h = key.hashCode()</code>，h是32位， <code>h &gt;&gt;&gt; 16</code> 得到的是其高16位。<code>h ^ (h &gt;&gt;&gt; 16)</code> 进行异或运算，这样就低位就混合了高位的特征，增大了<strong>随机性</strong>。</p>
+<p>（在JDK8之前，扰动函数会扰动多次，JDK8简化了这个操作）</p>
+<h2 id="为什么table初始化为16为什么需要是2的次幂">为什么table初始化为16？为什么需要是2的次幂？</h2>
+<p>Java中<code>HashMap</code>的<code>table</code>默认初始化为 <code>DEFAULT_INITIAL_CAPACITY = 1 &lt;&lt; 4</code> （ aka 16 ）容量。</p>
+<p>否则，指定其他容量时，会调用<code>threshold = tableSizeFor(initialCapacity)</code>设置，直到<code>table</code>初始化前，<code>threshold</code> 都临时储存初始容量。</p>
+<pre><code class="language-java">//作用：返回 ≥ cap 的最小 2 的幂。
+static final int tableSizeFor(int cap) {
+    int n = -1 &gt;&gt;&gt; Integer.numberOfLeadingZeros(cap - 1);
+    return (n &lt; 0) ? 1 : (n &gt;= MAXIMUM_CAPACITY) ? MAXIMUM_CAPACITY : n + 1;
+}
+</code></pre>
+<p>首先，在get、put方法中，可以发现<code>HashMap</code>通过 哈希值 与 table数组容量 确定元素在数组中的位置：</p>
+<pre><code class="language-java">//n = tab.length 不是 size！
+//n 表示有几个桶
+index = (n - 1) &amp; hash
+</code></pre>
+<p>当容量是2的次幂时，<code>n - 1</code>的二进制表示全是1：</p>
+<ul>
+<li>容量16：<code>16 - 1 = 15</code> → 二进制 <code>1111</code></li>
+<li>容量32：<code>32 - 1 = 31</code> → 二进制 <code>11111</code></li>
+</ul>
+<p>这样，<code>(n - 1) &amp; hash</code> 就相当于取哈希值的低几位，效果等同于取模运算 <code>hash % capacity</code>，但<strong>位运算的性能远高于取模运算</strong>。</p>
+<blockquote>
+<p>因为位运算直接对内存数据进行操作，不需要转成十进制，所以位运算要比取模运算的效率更高</p>
+</blockquote>
+<p><strong>为什么不取10呢</strong>？</p>
+<p>这是为了数据分布的更加均匀，也就是说 <strong>需要坐落在每一个Index的概率相等</strong>。</p>
+<blockquote>
+<p>LeetCode：<a href="https://leetcode.com/problems/first-missing-positive/">41. First Missing Positive</a></p>
+<p>知道上述原理后，对于LeetCode这一题也是十分简单的。手写Hash函数，再Check 返回缺失值。</p>
+</blockquote>
+<p>假设容量为10：<code>10 - 1 = 9</code> → 二进制 <code>1001</code></p>
+<p>与运算 <code>hash &amp; 1001</code> 时，只有第0位和第3位参与运算。</p>
+<pre><code class="language-java">// 哈希值二进制示例
+hash1 = 0010 &amp; 1001 = 0000 → 位置0
+hash2 = 0011 &amp; 1001 = 0001 → 位置1  
+hash3 = 0100 &amp; 1001 = 0000 → 位置0 // 冲突！
+hash4 = 0101 &amp; 1001 = 0001 → 位置1 // 冲突！
+</code></pre>
+<p>这会带来问题：</p>
+<p>也就是说，当HashMap 容量为10的时候，有些index结果的出现几率会更大，而有些index结果永远不会出现。</p>
+<p>因此，初始化/扩容为 2的n次幂，可以保证，后续在get/put entry时，尽可能的减少哈希碰撞，提高插入查找效率。</p>
+<h1 id="多线程不安全问题">多线程不安全问题</h1>
+<h2 id="头插法导致的死循环cpu-usage-100">头插法导致的死循环（CPU Usage 100%）</h2>
+<p>JDK1.7 中，如果两个线程<strong>并发触发了HashMap扩容</strong>，因为扩容时迁移使用 头插法插入元素 ，会形成环，使得后续查询因为死循环造成CPU占用率100%。</p>
+<pre><code class="language-java">/**
+ * 将当前哈希表中的所有Entry迁移到新表中（哈希表扩容/缩容核心方法）
+ * @param newTable 新哈希表数组
+ * @param rehash 是否需要重新计算哈希值（例如HashMap扩容时会触发）
+ */
+void transfer(Entry[] newTable, boolean rehash) {
+    // 1. 获取新表的容量（新数组长度）
+    int newCapacity = newTable.length;  
+    // 2. 遍历旧表的每一个桶（数组位置）
+    for (Entry&lt;K,V&gt; e : table) {
+        // 3. 遍历桶中的链表（处理链表中的每一个节点）
+        while(null != e) {
+            // 4. 保存下一个节点（防止链表断裂）
+            Entry&lt;K,V&gt; next = e.next;
+            // 5. 如果需要重新计算哈希值（例如扩容时）
+            if (rehash) {              
+                // 6. 重新计算哈希值：如果key为null则哈希=0，否则用hash()方法计算
+                e.hash = null == e.key ? 0 : hash(e.key); 
+            }
+            // 7. 计算当前节点在新表中的位置（取模运算简化为位运算）
+            int i = indexFor(e.hash, newCapacity);
+            // 8. 头插法：将当前节点的next指向 新表 对应桶的链表头部
+            e.next = newTable[i];
+            // 9. 将当前节点设为新链表头部
+            newTable[i] = e;
+            // 10. 移动到链表的下一个节点
+            e = next;
+           
+//newTable[i] 代表的是位置上的最上面那本书！
+//头插法：
+//假设新表的某个位置 i 原本已经有一摞书，现在要把一本新书 e 放在这摞书的最上面
+//e.next = newTable[i]：把新书 e 的下一本指向 当前书摞的最上面 那本（newTable[i]）。
+//此时书摞还是 书A → 书B → null，因为e.next = newTable[i]，则e.next = 书A，此时新书 e 的下一本是书摞的顶部书。
+//newTable[i] = e: 把整个书摞的顶部标记为新书 e。现在书摞变成 e → 书A → 书B → null，新书 e 成为新的顶部。
+        }
+    }
+}
+</code></pre>
+<h3 id="举例">举例</h3>
+<p>假设旧表长度为2，新表长度为4。</p>
+<ol>
+<li>
+<p><strong>初始状态</strong>：</p>
+<p>旧表中有两个桶，其中桶1的链表为：<code>EntryA → EntryB → null</code>（哈希冲突导致链表结构）</p>
+<p>线程1和线程2同时触发扩容操作。</p>
+</li>
+<li>
+<p><strong>线程1执行到步骤4</strong>：</p>
+<pre><code class="language-java">Entry&lt;K,V&gt; next = e.next;  // 线程1此时e=EntryA，next=EntryB
+// 线程1在此处被挂起...！
+</code></pre>
+</li>
+<li>
+<p><strong>线程2完整执行整个transfer</strong>：</p>
+<p>线程2将<code>EntryA</code>和<code>EntryB</code>迁移到新表的桶，由于头插法，新表中桶的链表变为：</p>
+<pre><code class="language-java">EntryB → EntryA → null
+</code></pre>
+<p>注意：头插法导致链表顺序反转</p>
+</li>
+<li>
+<p><strong>线程1恢复执行</strong>：</p>
+<p>线程1仍持有旧的链表引用：<code>e=EntryA</code>，<code>next=EntryB</code></p>
+<p>继续执行迁移：</p>
+<pre><code class="language-java">// 计算EntryA节点在新表中的位置
+int i = indexFor(e.hash, newCapacity);
+// 此时新表该位置已被线程2写入EntryB，所以EntryA.next = EntryB
+e.next = newTable[i];
+// 将EntryA设为链表头部（此时链表变成EntryA → EntryB）
+newTable[i] = e;
+// e=EntryB，继续处理下一个节点
+e = next;
+</code></pre>
+<p>处理<code>EntryB</code>时：</p>
+<pre><code class="language-java">Entry&lt;K,V&gt; next = e.next;  // EntryB.next原本是null（线程2迁移后的状态）
+int i = indexFor(e.hash, newCapacity);
+e.next = newTable[i];      // 新表该位置当前是EntryA，所以EntryB.next = EntryA
+newTable[i] = e;           // 链表变成EntryB → EntryA → EntryB（形成环！）
+</code></pre>
+</li>
+<li>
+<p><strong>最终结果</strong>：</p>
+<p>新表中出现环形链表：<code>EntryB → EntryA → EntryB</code></p>
+<p>后续对该链表进行查询时，CPU会因死循环导致100%占用！</p>
+</li>
+</ol>
+<hr>
+<h2 id="尾插法导致的数据覆盖">尾插法导致的数据覆盖</h2>
+<p>JDK1.8 中，如果两个线程<strong>并发执行 put 操作</strong>，并且两个数据的 hash 值冲突，就可能出现数据覆盖。</p>
+<h3 id="举例-2">举例</h3>
+<p>假设哈希表初始状态如下：</p>
+<ul>
+<li>桶位置 <code>i</code> 为空（<code>table[i] = null</code>）。</li>
+<li>线程A和线程B同时调用 <code>put(key1, value1)</code> 和 <code>put(key2, value2)</code>，且 <code>key1</code> 和 <code>key2</code> 哈希冲突（即 <code>hash(key1) = hash(key2)</code>）。</li>
+</ul>
+<ol>
+<li>
+<p><strong>线程A执行到插入逻辑</strong>：</p>
+<pre><code class="language-java">// 伪代码：判断桶位置是否为空
+if ((p = table[i]) == null) {
+    // 直接插入新节点（线程A在此处被挂起）
+    table[i] = newNode(hash, key1, value1, null);
+}
+</code></pre>
+<ul>
+<li>线程A发现 <code>table[i]</code> 为空，准备插入新节点 <code>Node(key1, value1)</code>，但<strong>尚未执行赋值操作</strong>。</li>
+</ul>
+</li>
+<li>
+<p><strong>线程B抢占执行</strong>：</p>
+<pre><code class="language-java">if ((p = table[i]) == null) {
+    // 线程B发现table[i]仍为空（因为线程A还未执行赋值）
+    table[i] = newNode(hash, key2, value2, null);
+}
+</code></pre>
+<ul>
+<li>线程B直接插入 <code>Node(key2, value2)</code>，此时 <code>table[i]</code> 被赋值为新节点。</li>
+</ul>
+</li>
+<li>
+<p><strong>线程A恢复执行</strong>：</p>
+<pre><code class="language-java">table[i] = newNode(hash, key1, value1, null); // 覆盖线程B的插入
+</code></pre>
+<ul>
+<li>线程A继续执行赋值操作（不会再次检查table[i]是否为空），<strong>覆盖线程B已插入的节点</strong>。最终 <code>table[i]</code> 中仅保留 <code>Node(key1, value1)</code>，<code>key2</code> 的数据彻底丢失！</li>
+</ul>
+</li>
+</ol>
+<hr>
+<h2 id="解决方案">解决方案</h2>
+<ol>
+<li>
+<p><strong>避免共享状态</strong>：在多线程环境中，尽量为每个线程分配独立的HashMap实例。</p>
+</li>
+<li>
+<p><strong>同步锁</strong>：对HashMap的写操作加锁（如 <code>synchronized</code>），但会大幅降低性能。</p>
+<pre><code class="language-java">synchronized(map) {
+    map.put(key, value);
+}
+</code></pre>
+</li>
+<li>
+<p><strong>线程安全容器</strong>：直接使用<code>ConcurrentHashMap</code>替代HashMap，其内部通过分段锁（JDK7）或CAS+synchronized（JDK8）保证并发安全。</p>
+<pre><code class="language-java">Map&lt;String, Object&gt; safeMap = new ConcurrentHashMap&lt;&gt;();
+safeMap.put(key, value); // 无需额外同步
+</code></pre>
+</li>
+</ol>
+<hr>
+<h1 id="参考">参考</h1>
+<blockquote>
+<p>https://juejin.cn/post/6844903518264885256</p>
+<p>https://juejin.cn/post/6844903518331994119</p>
+<p>https://cloud.tencent.com/developer/article/2427109</p>
+<p>https://pdai.tech/md/java/collection/java-map-HashMap&amp;HashSet.html</p>
+</blockquote>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E5%86%85%E9%83%A8%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84">内部数据结构</a></li>
+<li><a href="#jdk-18%E7%9A%84%E4%BC%98%E5%8C%96">JDK 1.8的优化</a></li>
+<li><a href="#%E5%85%B3%E9%94%AE%E5%AD%97%E6%AE%B5%E5%BD%B1%E5%93%8D%E6%80%A7%E8%83%BD%E7%9A%84%E9%87%8D%E8%A6%81%E5%8F%82%E6%95%B0">关键字段/影响性能的重要参数</a>
+<ul>
+<li><a href="#int-size">int size</a></li>
+<li><a href="#int-threshold">int threshold</a></li>
+<li><a href="#final-float-loadfactor">final float loadFactor</a></li>
+<li><a href="#treeify_threshold">TREEIFY_THRESHOLD</a></li>
+<li><a href="#untreeify_threshold">UNTREEIFY_THRESHOLD</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E6%A0%91%E5%8C%96%E5%8E%BB%E6%A0%91%E5%8C%96%E7%9A%84%E9%98%88%E5%80%BC%E4%B9%8B%E9%97%B4%E8%A6%81%E6%9C%89%E5%B7%AE%E5%80%BC">为什么树化/去树化的阈值之间要有差值？</a></li>
+</ul>
+</li>
+<li><a href="#%E5%85%81%E8%AE%B8%E7%A9%BA%E9%94%AE%E7%A9%BA%E5%80%BC">允许空键空值？</a></li>
+<li><a href="#%E5%B7%A5%E4%BD%9C%E5%8E%9F%E7%90%86">工作原理</a>
+<ul>
+<li><a href="#put%E6%96%B9%E6%B3%95%E7%9A%84%E5%8E%9F%E7%90%86">Put方法的原理</a></li>
+<li><a href="#get%E6%96%B9%E6%B3%95%E7%9A%84%E5%8E%9F%E7%90%86">Get方法的原理</a></li>
+<li><a href="#%E5%88%9D%E5%A7%8B%E5%8C%96%E6%89%A9%E5%AE%B9">初始化/扩容</a>
+<ul>
+<li><a href="#%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E4%BC%9A%E8%A7%A6%E5%8F%91resize">什么时候会触发resize？</a>
+<ul>
+<li><a href="#%E9%A6%96%E6%AC%A1%E6%8F%92%E5%85%A5%E5%85%83%E7%B4%A0%E6%97%B6%E7%9A%84%E6%87%92%E5%88%9D%E5%A7%8B%E5%8C%96">首次插入元素时的懒初始化</a></li>
+<li><a href="#%E6%8F%92%E5%85%A5%E5%90%8E%E5%85%83%E7%B4%A0%E6%95%B0%E9%87%8F%E8%B6%85%E8%BF%87%E9%98%88%E5%80%BC">插入后元素数量超过阈值</a></li>
+<li><a href="#%E6%89%B9%E9%87%8F%E6%8F%92%E5%85%A5%E5%A6%82-putall-%E6%88%96%E6%9E%84%E9%80%A0%E6%97%B6%E4%BC%A0%E5%85%A5-map">批量插入（如 <code>putAll</code> 或构造时传入 Map）</a></li>
+<li><a href="#%E6%A0%91%E5%8C%96%E5%89%8D%E5%AE%B9%E9%87%8F%E4%B8%8D%E8%B6%B3%E6%97%B6%E4%B9%9F%E4%BC%9A%E8%A7%A6%E5%8F%91-resize-%E8%80%8C%E9%9D%9E%E6%A0%91%E5%8C%96">树化前容量不足时也会触发 resize 而非树化</a></li>
+</ul>
+</li>
+<li><a href="#resize%E6%96%B9%E6%B3%95%E4%BB%8B%E7%BB%8D">resize方法介绍</a></li>
+<li><a href="#%E5%88%86%E7%BB%84%E5%88%86%E8%A3%82%E9%97%AE%E9%A2%98">分组/分裂问题</a>
+<ul>
+<li><a href="#%E4%BB%8B%E7%BB%8D">介绍</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E8%A6%81%E5%88%86%E7%BB%84%E5%A5%BD%E5%A4%84%E6%98%AF%E4%BB%80%E4%B9%88">为什么要分组？好处是什么？</a>
+<ul>
+<li><a href="#%E9%81%BF%E5%85%8D%E9%87%8D%E5%A4%8D%E8%AE%A1%E7%AE%97-hash-%E5%92%8C%E6%A8%A1%E8%BF%90%E7%AE%97">避免重复计算 hash 和模运算</a></li>
+<li><a href="#%E6%A0%91%E8%8A%82%E7%82%B9%E4%B9%9F%E8%83%BD%E9%AB%98%E6%95%88%E5%88%86%E8%A3%82">树节点也能高效分裂</a></li>
+<li><a href="#%E6%89%A9%E5%AE%B9%E6%98%AF%E5%8E%9F%E5%9C%B0%E5%88%86%E7%BB%84">扩容是“原地分组”</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E5%88%A0%E9%99%A4">删除</a></li>
+<li><a href="#%E6%A0%91%E5%8C%96">树化</a></li>
+<li><a href="#%E5%8E%BB%E6%A0%91%E5%8C%96%E9%93%BE%E8%A1%A8%E5%8C%96">去树化/链表化</a></li>
+<li><a href="#balance">Balance</a></li>
+</ul>
+</li>
+<li><a href="#%E5%A6%82%E4%BD%95%E6%8F%90%E5%8D%87hashmap%E5%87%BD%E6%95%B0%E7%9A%84%E6%9F%A5%E6%89%BE-%E6%8F%92%E5%85%A5%E6%95%88%E7%8E%87">如何提升<code>HashMap</code>函数的查找、插入效率？</a>
+<ul>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88hash%E5%87%BD%E6%95%B0%E8%A6%81%E8%BF%9B%E8%A1%8C-%E5%BC%82%E6%88%96-%E4%BD%8D%E8%BF%90%E7%AE%97">为什么hash函数要进行 异或、位运算？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88table%E5%88%9D%E5%A7%8B%E5%8C%96%E4%B8%BA16%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E6%98%AF2%E7%9A%84%E6%AC%A1%E5%B9%82">为什么table初始化为16？为什么需要是2的次幂？</a></li>
+</ul>
+</li>
+<li><a href="#%E5%A4%9A%E7%BA%BF%E7%A8%8B%E4%B8%8D%E5%AE%89%E5%85%A8%E9%97%AE%E9%A2%98">多线程不安全问题</a>
+<ul>
+<li><a href="#%E5%A4%B4%E6%8F%92%E6%B3%95%E5%AF%BC%E8%87%B4%E7%9A%84%E6%AD%BB%E5%BE%AA%E7%8E%AFcpu-usage-100">头插法导致的死循环（CPU Usage 100%）</a>
+<ul>
+<li><a href="#%E4%B8%BE%E4%BE%8B">举例</a></li>
+</ul>
+</li>
+<li><a href="#%E5%B0%BE%E6%8F%92%E6%B3%95%E5%AF%BC%E8%87%B4%E7%9A%84%E6%95%B0%E6%8D%AE%E8%A6%86%E7%9B%96">尾插法导致的数据覆盖</a>
+<ul>
+<li><a href="#%E4%B8%BE%E4%BE%8B-2">举例</a></li>
+</ul>
+</li>
+<li><a href="#%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88">解决方案</a></li>
+</ul>
+</li>
+<li><a href="#%E5%8F%82%E8%80%83">参考</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://kanyewestforreal.github.io/post/interlude/">
+              <h3 class="post-title">
+                Interlude
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  This blog is just for me to record the questions, which in my developing.
+  <div class="footer-right">
+    <a class="rss" href="https://kanyewestforreal.github.io//atom.xml" target="_blank">
+      <i class="ri-rss-line"></i> RSS
+    </a>
+    <span id="busuanzi_container_site_pv" style="margin-top: 8px;">
+      本站总访问量<span id="busuanzi_value_site_pv"></span>次
+    </span>
+  </div>
+  <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      // hljs.initHighlightingOnLoad()
+
+      // let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // // This should probably be throttled.
+      // // Especially because it triggers during smooth scrolling.
+      // // https://lodash.com/docs/4.17.10#throttle
+      // // You could do like...
+      // // window.addEventListener("scroll", () => {
+      // //    _.throttle(doThatStuff, 100);
+      // // });
+      // // Only not doing it here to keep this Pen dependency-free.
+
+      // window.addEventListener("scroll", event => {
+      //   let fromTop = window.scrollY;
+
+      //   mainNavLinks.forEach((link, index) => {
+      //     let section = document.getElementById(decodeURI(link.hash).substring(1));
+      //     let nextSection = null
+      //     if (mainNavLinks[index + 1]) {
+      //       nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+      //     }
+      //     if (section.offsetTop <= fromTop) {
+      //       if (nextSection) {
+      //         if (nextSection.offsetTop > fromTop) {
+      //           link.classList.add("current");
+      //         } else {
+      //           link.classList.remove("current");    
+      //         }
+      //       } else {
+      //         link.classList.add("current");
+      //       }
+      //     } else {
+      //       link.classList.remove("current");
+      //     }
+      //   });
+      // });
+
+    </script>
+  </body>
+</html>

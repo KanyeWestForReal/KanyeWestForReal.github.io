@@ -1,0 +1,1594 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Android Jetpack(2) Livedata源码阅读记录 | Grinofith&#39;s Blog</title>
+<link rel="shortcut icon" href="https://kanyewestforreal.github.io//favicon.ico?v=1765275803375">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://kanyewestforreal.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Android Jetpack(2) Livedata源码阅读记录 | Grinofith&#39;s Blog - Atom Feed" href="https://kanyewestforreal.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="发现问题
+在传统的Android开发中，经常需要通过本地/网络进行异步获取数据，获取过程中会消耗一定的时间，这段时间常常是不可感知的空白期，大多数只有获取最终结果的回调，会出现许多状况：
+
+生命周期管理缺失: 无法感知 Android 生命..." />
+    <meta name="keywords" content="Android" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <!-- <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script> -->
+    <script src="//cdn.jsdelivr.net/npm/leancloud-storage@4.13.2/dist/av-min.js"></script>
+    <script src="/media/js/read_mark.js"></script>
+    <script src="/media/js/highlight/highlight.min.js"></script>
+    <script src="/media/js/sroll_markdown_titile_list.js"></script>
+    <link rel="stylesheet" type="text/css" href="/media/js/highlight/styles/atom-one-dark.css">
+    <script>hljs.highlightAll();</script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://kanyewestforreal.github.io/">
+  <img class="avatar" src="https://kanyewestforreal.github.io//images/avatar.png?v=1765275803375" alt="">
+  </a>
+  <h1 class="site-title">
+    Grinofith&#39;s Blog
+  </h1>
+  <p class="site-description">
+    The key is seriously reflecting.
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Android Jetpack(2) Livedata源码阅读记录
+            </h2>
+            <div class="post-info">
+              <span>
+                2025-03-16
+              </span>
+              <span class="post-views">
+                  <span >阅读量：</span>
+                  <span id="dynamic-views-counter"></span>
+              </span>
+              <span>
+                47 min read
+              </span>
+              
+                <a href="https://kanyewestforreal.github.io/tag/AndroidTAG/" class="post-tag">
+                  # Android
+                </a>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://kanyewestforreal.github.io//post-images/android-jetpack2-livedata.jpg" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <h1 id="发现问题"><strong>发现问题</strong></h1>
+<p>在传统的Android开发中，经常需要通过本地/网络进行异步获取数据，获取过程中会消耗一定的时间，这段时间常常是不可感知的空白期，大多数只有获取最终结果的回调，会出现许多状况：</p>
+<ul>
+<li><strong>生命周期管理缺失</strong>: 无法感知 Android 生命周期，如果直接使用数据去 UI 更新时可能引发崩溃或内存泄漏。UI不可见或已销毁就需要避免无效更新。</li>
+<li><strong>线程安全问题</strong>: UI 更新需主线程执行，但数据可能来自子线程，异步数据推送容易引发竞态条件。</li>
+<li><strong>内存泄漏</strong>：如果使用传统观察者模式，可能出现UI组件销毁后未取消订阅，导致持有引用，最后内存泄漏的情况发生，或者手动取消订阅过于模板代码。</li>
+<li><strong>粘性事件</strong>：新的观察者（UI）可能需要立即获取最新数据。</li>
+</ul>
+<h1 id="解决思路"><strong>解决思路</strong></h1>
+<h2 id="核心需求"><strong>核心需求</strong></h2>
+<ol>
+<li><strong>生命周期感知</strong>：数据变化时，仅通知处于活跃状态（如 <code>STARTED</code>/<code>RESUMED</code>）的观察者。</li>
+<li><strong>线程安全</strong>：确保数据更新和观察回调在主线程执行。</li>
+<li><strong>粘性事件管理</strong>：新观察者自动获取最后一次数据更新。</li>
+<li><strong>解耦数据与UI</strong>：数据持有者（如 ViewModel）不直接依赖 UI 组件（如 Activity）。</li>
+</ol>
+<h2 id="关键思路"><strong>关键思路</strong></h2>
+<ol>
+<li>
+<p><strong>观察者模式（核心设计模式）</strong><br>
+<strong>Why？</strong></p>
+<ul>
+<li><strong>解耦数据源与观察者</strong>：<code>LiveData</code> 作为数据源，无需感知具体观察者（如 Activity/Fragment），观察者只需实现 <code>Observer</code> 接口。</li>
+<li><strong>动态订阅/注销</strong>：通过 <code>observe()</code> 动态绑定生命周期，自动管理订阅关系。</li>
+<li><strong>多观察者支持</strong>：允许多个观察者订阅同一数据源（如多个 Fragment 共享 ViewModel 数据）。</li>
+</ul>
+<p><strong>How？</strong></p>
+<ul>
+<li><code>LiveData</code> 内部维护观察者列表，通过 <code>observe()</code> 注册 <code>LifecycleBoundObserver</code> 包装类。</li>
+<li>当数据变化时，遍历观察者列表，仅通知活跃状态的观察者。</li>
+</ul>
+</li>
+<li>
+<p><strong>生命周期状态驱动</strong><br>
+<strong>Why？</strong></p>
+<ul>
+<li><strong>状态决定行为</strong>：观察者是否接收数据取决于其生命周期状态（如 <code>RESUMED</code> 时活跃）。</li>
+<li><strong>容错性</strong>：自动处理非法状态（如 Activity 销毁时移除观察者，避免崩溃）。</li>
+</ul>
+<p><strong>How？</strong></p>
+<ul>
+<li>通过 <code>LifecycleBoundObserver</code> 绑定 <code>Lifecycle</code> 状态，在 <code>ON_START</code>/<code>ON_RESUME</code> 时标记为活跃。</li>
+<li>生命周期状态变化时，触发 <code>activeStateChanged()</code>，更新观察者状态。</li>
+</ul>
+</li>
+<li>
+<p><strong>代理模式（生命周期绑定与分发）</strong><br>
+<strong>Why？</strong></p>
+<ul>
+<li><strong>职责分离</strong>：<code>LifecycleBoundObserver</code> 代理观察者的生命周期管理，<code>LiveData</code> 仅关注数据逻辑。</li>
+<li><strong>统一入口</strong>：通过 <code>ReportFragment</code>（隐式注入）代理 Activity/Fragment 的生命周期事件监听。</li>
+</ul>
+<p><strong>How？</strong></p>
+<ul>
+<li><code>LifecycleBoundObserver</code> 实现 <code>LifecycleEventObserver</code> 接口，代理观察者的生命周期回调。</li>
+<li>当生命周期状态变化时，<code>LifecycleBoundObserver</code> 通知 <code>LiveData</code> 更新观察者活跃状态。</li>
+</ul>
+</li>
+<li>
+<p><strong>版本控制（粘性事件管理）</strong><br>
+<strong>Why？</strong></p>
+<ul>
+<li><strong>避免重复通知</strong>：新观察者仅需获取最新数据版本，而非历史变更。</li>
+<li><strong>状态同步</strong>：确保观察者初始化时与数据源版本一致。</li>
+</ul>
+<p><strong>How？</strong></p>
+<ul>
+<li><code>LiveData</code> 维护 <code>mVersion</code> 计数器，每次 <code>setValue()</code> 递增版本号。</li>
+<li>观察者注册时记录当前版本，若数据版本更新，则立即触发回调。</li>
+</ul>
+</li>
+<li>
+<p><strong>线程切换封装（主线程安全）</strong><br>
+<strong>Why？</strong></p>
+<ul>
+<li><strong>线程透明性</strong>：开发者无需手动切换线程，<code>postValue()</code> 自动将数据更新抛到主线程。</li>
+<li><strong>安全性</strong>：强制 <code>setValue()</code> 在主线程调用，避免并发问题。</li>
+</ul>
+<p><strong>How？</strong></p>
+<ul>
+<li><code>postValue()</code> 通过 <code>ArchTaskExecutor</code> 切换到主线程，最终调用 <code>setValue()</code>。</li>
+<li><code>setValue()</code> 校验当前线程，非主线程抛出 <code>IllegalStateException</code>。</li>
+</ul>
+</li>
+<li>
+<p><strong>装饰器模式（观察者包装）</strong><br>
+<strong>Why？</strong></p>
+<ul>
+<li><strong>功能增强</strong>：通过 <code>LifecycleBoundObserver</code> 包装原始观察者，添加生命周期管理逻辑。</li>
+<li><strong>灵活性</strong>：支持扩展不同观察者类型（如 <code>ForeverObserver</code> 脱离生命周期的观察）。</li>
+</ul>
+<p><strong>How？</strong></p>
+<ul>
+<li><code>observe()</code> 方法将原始 <code>Observer</code> 封装为 <code>LifecycleBoundObserver</code>，绑定生命周期。</li>
+<li><code>observeForever()</code> 使用 <code>AlwaysActiveObserver</code>，直接标记为活跃状态。</li>
+</ul>
+</li>
+</ol>
+<h1 id="解决方案核心源码"><strong>解决方案（核心源码）</strong></h1>
+<h2 id="核心类接口"><strong>核心类/接口</strong></h2>
+<p><code>LiveData</code>：数据持有者，管理观察者及生命周期。</p>
+<p><code>Observer</code>：观察者接口，定义<code>onChanged(T)</code>，数据更新时负责分发。</p>
+<p><code>LifecycleBoundObserver</code>：包装观察者，绑定生命周期状态。</p>
+<p><code>MutableLiveData</code>：可变的LiveData子类，暴露<code>setValue/postValue</code>。</p>
+<pre><code class="language-java">// 观察者注册
+public void observe(@NonNull LifecycleOwner owner, @NonNull Observer&lt;? super T&gt; observer) {
+    LifecycleBoundObserver wrapper = new LifecycleBoundObserver(owner, observer);
+    owner.getLifecycle().addObserver(wrapper); // 绑定生命周期
+}
+
+// 数据更新分发
+protected void setValue(T value) {
+    mVersion++; // 版本号递增
+    mData = value;
+    dispatchingValue(null); // 遍历观察者，判断活跃状态后回调
+}
+</code></pre>
+<h2 id="观察者包装"><strong>观察者包装</strong></h2>
+<p><code>ObserverWrapper</code> 抽象类跟踪观察者状态，<code>LifecycleBoundObserver</code> 继承并实现生命周期绑定。</p>
+<pre><code class="language-java">private abstract class ObserverWrapper {
+    boolean mActive; // 观察者是否活跃
+    int mLastVersion = START_VERSION; // 最后接收的数据版本
+}
+
+class LifecycleBoundObserver extends ObserverWrapper 
+    implements LifecycleEventObserver {
+    public void onStateChanged(LifecycleOwner source, Lifecycle.Event event) {
+        // 根据生命周期状态更新 mActive
+    }
+}
+</code></pre>
+<h2 id="数据版本控制"><strong>数据版本控制</strong></h2>
+<p>LiveData 内部维护 <code>mVersion</code>，每次数据更新递增，观察者通过比较版本决定是否处理。</p>
+<pre><code class="language-java">private int mVersion = START_VERSION;
+
+protected void setValue(T value) {
+    mVersion++;
+    mData = value;
+    dispatchingValue(this);
+}
+</code></pre>
+<h2 id="事件分发机制"><strong>事件分发机制</strong></h2>
+<p><code>dispatchingValue()</code> 遍历观察者，仅通知活跃且版本落后的观察者。</p>
+<pre><code class="language-java">void dispatchingValue(ObserverWrapper initiator) {
+    if (initiator != null &amp;&amp; !initiator.shouldBeActive()) return;
+    observer.mObserver.onChanged((T) mData);
+}
+</code></pre>
+<h1 id="源码流程图关键流程">源码流程图（关键流程）</h1>
+<h2 id="观察者注册阶段">观察者注册阶段</h2>
+<figure data-type="image" tabindex="1"><img src="https://kanyewestforreal.github.io//post-images/livedate_reg.png" alt="livedate_reg" loading="lazy"></figure>
+<p>用户通过<code>observe()</code>方法将<code>原始Observer</code>与<code>LifecycleOwner</code>绑定。此时<code>LiveData</code>会创建一个<code>LifecycleBoundObserver</code>（继承<code>ObserverWrapper</code>，实现<code>LifecycleEventObserver</code>接口），该对象<code>ObserverWrapper</code>包含<code>原始Observer</code>和生命周期感知能力。初始化时会记录当前版本号为-1（START_VERSION），然后将<code>ObserverWrapper</code>注册到<code>Owner</code>的生命周期组件中，实现自动生命周期管理。</p>
+<h2 id="生命周期事件处理">生命周期事件处理</h2>
+<figure data-type="image" tabindex="2"><img src="https://kanyewestforreal.github.io//post-images/livedata_handle_event.png" alt="livedata_handle_event" loading="lazy"></figure>
+<ul>
+<li>当生命周期变为<strong>ON_DESTROY</strong>时，自动调用<code>removeObserver()</code>解除观察，这是LiveData防止内存泄漏的关键机制。</li>
+<li>其他状态变化时，会重新计算活跃状态（例如ON_START/ON_RESUME时为活跃，ON_STOP/ON_PAUSE时为非活跃）。</li>
+<li>当首次变为活跃状态时，立即触发<code>dispatchingValue()</code>，通过版本号比对（当前版本号mVersion vs 观察者的mLastVersion），如果数据有更新则回调<code>onChanged()</code>，实现<strong>粘性事件</strong>特性。</li>
+</ul>
+<h2 id="数据更新流程">数据更新流程</h2>
+<figure data-type="image" tabindex="3"><img src="https://kanyewestforreal.github.io//post-images/livedata_data_update.png" alt="livedata_data_update" loading="lazy"></figure>
+<ul>
+<li>
+<p>通过<code>setValue()</code>更新数据时，<code>mVersion</code>自增1，标识数据版本更新。</p>
+</li>
+<li>
+<p>调用<code>dispatchingValue(null)</code>会遍历所有观察者：</p>
+<p>对于每个观察者，检查同时满足两个条件：</p>
+<ol>
+<li>处于活跃状态（当前生命周期状态为STARTED/RESUMED）</li>
+<li>观察者的mLastVersion &lt; LiveData的mVersion</li>
+</ol>
+<p>满足条件则立即分发数据给观察者，并更新观察者的版本号。</p>
+</li>
+</ul>
+<hr>
+<h1 id="注意">注意</h1>
+<h2 id="observe与-observeforever-区别何时需手动移除观察者"><code>observe()</code>与 <code>observeForever()</code> 区别？何时需手动移除观察者？</h2>
+<h2 id="新观察者如何收到数据">新观察者如何收到数据？</h2>
+<h3 id="observe">observe()</h3>
+<p>先看看observe()的源码。</p>
+<pre><code class="language-java">//在给定所有者的生命周期内将给定的观察者添加到观察者列表中。
+//事件在主线程上调度。如果 LiveData 已有数据集，则会将其传送给观察者。
+//仅当所有者处于 Lifecycle.State.STARTED 或 Lifecycle.State.RESUMED 状态为 （active） 时，观察者才会接收事件。
+//如果Onwer 移动到Lifecycle.State.DESTROYED 状态，则观察者将被自动删除。
+//当在 Owner 未激活时数据发生更改时，它不会收到任何更新。
+//如果它再次变为活动状态，它将自动接收最后的可用数据。
+//只要给定的 LifecycleOwner 未被销毁，LiveData 就会保留对观察者和Owner的强引用。
+//当Owner被销毁时，LiveData 会删除对观察者和所有者的引用。
+@MainThread
+public void observe(@NonNull LifecycleOwner owner, @NonNull Observer&lt;? super T&gt; observer) {
+    assertMainThread(&quot;observe&quot;);
+    //如果给定的Onwer已处于DESTROYED 状态，则 LiveData 会忽略该调用。
+    //若在DESTROYED后允许注册观察者，后续的LiveData.setValue()可能会触发对无效Observer的调用
+    //即使强行绑定，LifecycleBoundObserver也会在onStateChanged()中立即移除自身（因为状态已经是DESTROYED）
+    if (owner.getLifecycle().getCurrentState() == DESTROYED) {
+        // ignore
+        return;
+    }
+    //对传入的Observer进行包装
+    LifecycleBoundObserver wrapper = new LifecycleBoundObserver(owner, observer);
+    //一个 Observer 只允许和单个 LifecycleOwner 进行绑定。
+    //因为如果允许一个 Observer 同时和多个不同的 LifecycleOwner 进行绑定的话，当某个 LifecycleOwner 进入 DESTROYED 状态时，LiveData 需自动移除关联的观察者，活跃的 LifecycleOwner 可能无法继续接收数据更新。
+    //若一个 Observer 对应多个 LifecycleOwner，LiveData 需同时跟踪多个生命周期状态，这会显著增加状态管理的复杂度。
+    //注意，一个LifecycleOwner 可以有多个 Observer
+    //如果存在返回条目，不存在则存入链表、返回null
+    ObserverWrapper existing = mObserver.putIfAbsent(observer, wrapper);
+    //对先调用observeForever()，再调用observe()的处理
+    //判断条件二：对于AlwaysActiveObserver，其没有覆写isAttachedTo 默认返回false
+    if (existing != null &amp;&amp; !existing.isAttachedTo(owner)) {
+        throw new IllegalArgumentException(&quot;Cannot add the same observer&quot;
+                + &quot; with different lifecycles&quot;);
+    }
+    //这里就是二次调用observe()的处理
+    //如果给定的(onwer,observer) 这一对条目已在链表中，忽略，避免重复添加。
+    if (existing != null) {
+        return;
+    }
+    //将 Observer 的生命周期与当前 LifecycleOwner 严格关联。
+    owner.getLifecycle().addObserver(wrapper);
+}
+</code></pre>
+<h3 id="observeforever">observeForever()</h3>
+<p>再看看<code>observeForever()</code>的源码。</p>
+<pre><code class="language-java">//将给定的观察者添加到观察者列表中。
+//注意：这个方法不需要传入Onwer。如果LiveData 有一个这样的观察者，这个观察者将一直是活跃的。
+//这意味着传入的这个观察者将接收所有数据，不依赖任何生命周期，并且永远不会被自动删除。
+//应该手动调用 removeObserver(Observer) 以停止观察此 LiveData。
+//拥有这一个观察者，Livedata将持续处于活跃状态。
+@MainThread
+public void observeForever(@NonNull Observer&lt;? super T&gt; observer) {
+    assertMainThread(&quot;observeForever&quot;);
+    //注意AlwaysActiveObserver#shouldBeActive() 总是返回true
+    AlwaysActiveObserver wrapper = new AlwaysActiveObserver(observer);
+    ObserverWrapper existing = mObservers.putIfAbsent(observer, wrapper);
+    //处理先调用observe()，再调用observeForever()的情况
+    //如果 Observer 已通过 observe() 绑定到 LifecycleOwner，其包装器为 LifecycleBoundObserver。
+	//此时若尝试用 observeForever() 再次注册同一 Observer，会检测到 existing 是 LifecycleBoundObserver 类型，直接抛出异常，阻止混合绑定。
+    if (existing instanceof LiveData.LifecycleBoundObserver) {
+        throw new IllegalArgumentException(&quot;Cannot add the same observer&quot;
+                + &quot; with different lifecycles&quot;);
+    }
+    //这里就是二次调用observeForever()的处理
+    if (existing != null) {
+        return;
+    }
+    //立刻设置为活跃状态，在该方法中准备进行数据回调。
+    //这里我们可以看到与observe不同的是，新观察者一添加进来，observeForever立刻调用了activeStateChanged，尝试进行分发数据
+    //而不像observe，是等待Owner分发生命周期状态时，才去调用activeStateChanged尝试进行分发数据
+    wrapper.activeStateChanged(true);
+}
+</code></pre>
+<h3 id="总结">总结</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:center"><strong>特性</strong></th>
+<th style="text-align:left"><strong><code>observe()</code></strong></th>
+<th style="text-align:left"><strong><code>observeForever()</code></strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center"><strong>生命周期感知</strong></td>
+<td style="text-align:left">是：自动绑定到 <code>LifecycleOwner</code> 的生命周期（如 Activity/Fragment）。</td>
+<td style="text-align:left">否：观察者永久活跃，不依赖任何生命周期。</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>自动移除</strong></td>
+<td style="text-align:left">是：当 <code>LifecycleOwner</code> 进入 <code>DESTROYED</code> 状态时，观察者自动移除。</td>
+<td style="text-align:left">否：需手动调用 <code>removeObserver(observer)</code> 移除，否则可能引发内存泄漏。</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>活跃状态触发条件</strong></td>
+<td style="text-align:left">仅当 <code>LifecycleOwner</code> 处于 <code>STARTED</code> 或 <code>RESUMED</code> 状态时接收更新。</td>
+<td style="text-align:left">始终接收更新，无论 UI 是否在前台。</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>包装类</strong></td>
+<td style="text-align:left"><code>LifecycleBoundObserver</code>（内部类，处理生命周期绑定与自动移除）。</td>
+<td style="text-align:left"><code>AlwaysActiveObserver</code>（内部类，强制观察者永久活跃）。</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>设计场景</strong></td>
+<td style="text-align:left"><strong>适用于 UI 组件（如 Activity/Fragment），需自动管理生命周期。</strong></td>
+<td style="text-align:left"><strong>适用于非 UI 场景（如后台服务、Repository 层），需长期监听数据变化。</strong></td>
+</tr>
+</tbody>
+</table>
+<p>也就是说，<strong>使用 <code>observeForever()</code> 时</strong>必须手动移除观察者。</p>
+<h2 id="livedata-如何避免内存泄漏">LiveData 如何避免内存泄漏？</h2>
+<h2 id="lifecycleboundobserver-的作用是什么">LifecycleBoundObserver 的作用是什么？</h2>
+<h2 id="lifecycleowner状态是如何影响数据分发的">LifecycleOwner状态是如何影响数据分发的？</h2>
+<h2 id="lifecyclestatestarted-与-resumed-对-livedata-的影响差异"><code>Lifecycle.State.STARTED</code> 与 <code>RESUMED</code> 对 LiveData 的影响差异？</h2>
+<h2 id="oninactive能不能判断是否还存在观察者">onInactive能不能判断是否还存在观察者？</h2>
+<p><strong>问题一：</strong></p>
+<p>每一个<code>Livedata</code>被观察时，传入的观察者都被包装成<code>LifecycleBoundObserver</code>类，其继承了<code>ObserverWrapper</code>，<strong>实现了<code>LifecycleEventObserver</code>接口</strong>，同时观察者与传入的<code>Owner</code>进行关联。</p>
+<p>也就是说<code>LifecycleBoundObserver</code>是具有感知Owner的生命周期的能力的。</p>
+<p>当<code>Owner</code>的生命周期状态改变时，会回调对应的状态。</p>
+<pre><code class="language-java">//LifecycleBoundObserver#onStateChanged
+@Override
+public void onStateChanged(@NonNull LifecycleOwner source,
+        @NonNull Lifecycle.Event event) {
+    Lifecycle.State currentState = mOwner.getLifecycle().getCurrentState();
+    //注意：一个Owner可以有多个观察者。
+    //DESTROYED前，移除与Owner关联的观察者，防止无法正常GC，这里就是避免内存泄露的主要代码
+    //因为观察者可能隐式持有Activity/Fragment的引用（lambda调用其成员方法/变量）
+    if (currentState == DESTROYED) {
+        removeObserver(mObserver);
+        return;
+    }
+    //确保在生命周期状态可能连续变化的场景下
+    //能够稳定处理最终状态，避免因中间状态导致的错误或不一致。
+    //这里之所以需要本地变量prevState和while循环配合，
+    //是因为activeStateChanged -&gt; dispatchingValue(this) -&gt; considerNotify -&gt; onChanged，会触发数据更新的回调
+    //如果在onChanged进行Activity状态改变的操作，就会可能出现这样重入的情况
+    //（注意：实际上，测试过启动新Activity、finishActivity、启动DialogActivity、moveTaskToBack，都只会触发一次while。
+    //这个while循环是官方在解决changeActiveCounter重入问题时顺手更新的，可能是为了测试active/inactive方法，去手动hanle状态，发现的问题）
+    // 初始化上一次状态为null
+    Lifecycle.State prevState = null;
+    // 循环条件：当前状态与上一次状态不一致时继续处理
+    while (prevState != currentState) {
+        // 记录当前状态为“上一次状态”
+        prevState = currentState;
+        //因为Owner状态发生了变更，需要判断LifecycleOwner是否活跃（活跃状态为STARTED/RESUMED）
+		//判断结果影响这个Observer是否活跃，同时也会影响是否分发数据。
+        activeStateChanged(shouldBeActive());
+        // 重新获取最新的生命周期状态（可能在activeStateChanged分发数据的回调中触发了新的状态变化）
+        currentState = mOwner.getLifecycle().getCurrentState();
+    }
+    //注意这是 一个 Observer的onStateChanged方法
+}
+
+//LifecycleBoundObserver#shouldBeActive
+//用于判断LifecycleOwner是否活跃
+@Override
+boolean shouldBeActive() {
+    //注意，这里LifecycleBoundObserver的活跃条件就是，
+    //与其关联的Owner至少要处于STARTED状态，实际上就两个状态STARTED/RESUMED
+	return mOwner.getLifecycle().getCurrentState().isAtLeast(STARTED);
+}
+
+//LifecycleBoundObserver#removeObserver
+@MainThread
+public void removeObserver(@NonNull final Observer&lt;? super T&gt; observer) {
+ 	assertMainThread(&quot;removeObserver&quot;);
+ 	ObserverWrapper removed = mObservers.remove(observer);
+ 	if (removed == null) {
+            return;
+  	}
+ 	removed.detachObserver();
+    //设置为false，走向changeActiveCounter
+ 	removed.activeStateChanged(false);
+}
+
+//LifecycleBoundObserver#detachObserver
+@Override
+void detachObserver() {
+ 	mOwner.getLifecycle().removeObserver(this);
+}
+
+//ObserverWrapper#activeStateChanged
+void activeStateChanged(boolean newActive) {
+    //newActive来自Owner的状态判断结果
+    //Owner状态没有变化，没必要往下走，浪费资源
+    //比如不活跃到不活跃
+    //STARTED到RESUMED
+ 	if (newActive == mActive) {
+ 		return;
+ 	}
+    //活跃状态变更
+ 	//立即设置活跃状态，因此永远不会将值分派给不活跃的Owner
+ 	mActive = newActive;
+    //根据传入的 新状态，改变活跃观察者数量。
+    //活跃观察者数量 决定了 Livedata是否属于活跃状态
+    //注意，Livedata是否属于活跃状态，
+    //默认是不影响分发数据的（Livedata默认没有实现onInactive()/onActive()）
+    //只有 LifecycleOnwer 的活跃状态才影响分发数据！！！
+    //如果自定义实现了，或者使用MediatorLiveData，在onInactive()/onActive()，手动释放Livedata的资源（比如截断数据传给Livedata这个过程），是可以影响分发数据的
+ 	changeActiveCounter(mActive ? 1 : -1);
+    
+    //只有Owner从非活跃到活跃，则分发数据这种情况。
+    //对于以下两种
+    //因为Owner从活跃到活跃，是不可能走到这里的，前面return了
+    //Owner从活跃到不活跃，下面if语句不通过
+ 	if (mActive) {
+ 		dispatchingValue(this);
+ 	}
+}
+
+
+//Livedata#changeActiveCounter
+@MainThread
+void changeActiveCounter(int change) {
+    //保存 改变前的 活跃观察者数量
+    //活跃观察者数量 决定了 Livedata是否属于活跃状态
+    int previousActiveCount = mActiveCount;
+    //改变后的数量
+    mActiveCount += change;
+    //用于解决重入问题的flag
+    if (mChangingActiveState) {
+        return;
+    }
+    //表示正在进行修改活跃状态
+    mChangingActiveState = true;
+    try {
+        while (previousActiveCount != mActiveCount) {
+         	//改变前没有活跃观察者，改变后活跃观察者数量大于0 
+            //-&gt; Livedata接下来应该是活跃的
+            boolean needToCallActive = previousActiveCount == 0 &amp;&amp; mActiveCount &gt; 0;
+            //改变前活跃观察者数量大于0，改变后活跃观察者数量小于0 
+            //-&gt; Livedata接下来应该是不活跃的
+            boolean needToCallInactive = previousActiveCount &gt; 0 &amp;&amp; mActiveCount == 0;
+            //判断结束，保存当前的 活跃观察者数量，以防止出现重入问题
+            //如果出现重入问题，那么mActiveCount改变，mChangingActiveState为true，不会新开循环
+            //而这里的 previousActiveCount ！= mActiveCount，那么只会继续 在这个 while循环
+            //否则 previousActiveCount == mActiveCount循环结束
+            previousActiveCount = mActiveCount;
+            //执行回调
+            //回调中，可能出现移除/添加Livedata的观察者，这正是重入问题的来源
+            if (needToCallActive) {
+                //允许自定义时覆写的方法，可以在活跃/不活跃时，考虑获取/释放Livedata的资源
+                onActive();
+            } else if (needToCallInactive) {
+                //注意onInactive无法说明没有观察者，只能说明，
+                //Livedata所有观察者都处于不活跃状态（不是STARTED/RESUMED），使得Livedata可以判定为不活跃
+                onInactive();
+            }
+        }
+    } finally {
+        //结束
+        mChangingActiveState = false;
+        //防止回调中抛出异常，使得一直陷入死循环
+    }
+}
+</code></pre>
+<h3 id="总结-2">总结</h3>
+<p>避免内存泄漏的方法：是在每个观察者接收到<code>Owner</code>分发的<code>DESTROYED</code>状态后，移除本身的观察。</p>
+<p>同时也提供了一套活跃状态级联触发的机制。帮助实现数据分发，以及提供了<code>Livedata</code>活跃状态变更的回调，帮助释放<code>Livedata</code>占用的资源。</p>
+<p><strong><code>LifecycleOwner</code> 的活跃状态</strong>：由 <code>LifecycleBoundObserver.shouldBeActive()</code> 判断，基于 <code>LifecycleOwner</code> 是否至少处于 <code>STARTED</code> 状态。用于传入<code>activeStateChanged()</code>。</p>
+<p><strong><code>Observer</code> 的活跃状态</strong>：由 <code>ObserverWrapper.mActive</code> 标记，通过 <code>activeStateChanged()</code> 更新，并触发 <code>LiveData</code> 的活跃状态变化。</p>
+<p><strong><code>LiveData</code> 的活跃状态</strong>：由 <code>mActiveCount</code>（活跃 Observer 总数）控制，通过 <code>changeActiveCounter()</code> 触发 <code>onActive()</code>/<code>onInactive()</code>。</p>
+<p>三者关系：一个<strong>Owner 状态 → 多个Observer 状态 → 一个LiveData 状态</strong> 的级联触发。</p>
+<p>从<code>activeStateChanged/shouldBeActive</code>的源码来看，很容易回答第四个问题：即——</p>
+<h4 id="lifecyclestatestarted-与-resumed-对-livedata-的影响差异-2"><code>Lifecycle.State.STARTED</code> 与 <code>RESUMED</code> 对 LiveData 的影响差异？</h4>
+<p>无差异。</p>
+<p>当<code>Owner</code>处于 <code>Lifecycle.State.STARTED</code> 或 <code>Lifecycle.State.RESUMED</code> 状态为 （active） 时，<strong>观察者才处于活跃状态</strong>。当组件退到 <code>STARTED</code> 以下（例如 <code>onStop()</code> 触发，状态变为 <code>CREATED</code>，或者是<code>DESTROYED</code>状态），观察者将<strong>无法接收到更新的数据</strong>。</p>
+<p>所以<strong>当 Activity 进入后台，LiveData 的更新不会立即分发</strong>，而是等到下一次进入  STARTED/RESUMED 状态。也就是非活跃走到活跃状态。</p>
+<h4 id="注意oninactive能不能判断是否还存在观察者">注意：onInactive能不能判断是否还存在观察者？</h4>
+<p>这并不意味着没有观察者，可能仍然存在观察者，但它们关联的<code>Owner</code>的生命周期状态不是 <code>Lifecycle.State.STARTED</code> / <code>Lifecycle.State.RESUMED</code> （如返回堆栈中的 Activity）。</p>
+<p>如果要判断是否还有观察者，请使用<code>hasObservers()</code>。</p>
+<h2 id="粘性数据是什么">粘性数据是什么？</h2>
+<h2 id="livedata是如何实现粘性的">Livedata是如何实现粘性的？</h2>
+<h2 id="如何避免重复消费非粘性livedata的实现">如何避免重复消费(非粘性Livedata的实现)？</h2>
+<p><strong>粘性数据</strong>指当新观察者注册时，LiveData 会立即向其发送最后一次更新的数据，即使该数据是<strong>在观察者注册前</strong>更新收到的。（注意，对 不希望收到最后一次更新的数据 的叫法，网上之称为数据倒灌）</p>
+<p>实际上，这是为了帮助Activity 重建后，能够恢复重建前的UI，去重新观察 <code>LiveData</code> 时，<code>Livedata</code>仍然保存了一份数据，只要一观察<code>Livedata</code>，经过判断就会立即分发数据，所以能够收到重建前的数据。</p>
+<p>首先要明确：</p>
+<ul>
+<li><strong>粘性数据</strong>：适合状态（如 UI 状态），需持久化最新值。</li>
+<li><strong>非粘性数据</strong>：事件（如 Toast、导航）应使用其他方案避免重复消费。</li>
+</ul>
+<h3 id="避免重复消费收到粘性数据的方法">避免重复消费/收到粘性数据的方法</h3>
+<h4 id="事件包装类">事件包装类</h4>
+<p>用 <code>Event</code> 类包裹数据，标记是否已被处理。</p>
+<pre><code class="language-kotlin">class Event&lt;T&gt;(private val content: T) {
+    private var hasBeenHandled = false
+
+    fun getContentIfNotHandled(): T? {
+        return if (hasBeenHandled) null else {
+            hasBeenHandled = true
+            content
+        }
+    }
+}
+
+// ViewModel 中暴露 Event
+val eventData = MutableLiveData&lt;Event&lt;String&gt;&gt;()
+
+// 观察侧处理
+viewModel.eventData.observe(this) { event -&gt;
+    event.getContentIfNotHandled()?.let { data -&gt;
+        // 处理数据
+    }
+}
+</code></pre>
+<h4 id="使用-singleliveevent">使用 SingleLiveEvent</h4>
+<p>这是官方<code>TodoApp</code>给出的做法，自定义 <code>LiveData</code> 实现。</p>
+<p><strong>多个观察者可能只有一个能收到数据。</strong></p>
+<pre><code class="language-kotlin">class SingleLiveEvent&lt;T&gt; : MutableLiveData&lt;T&gt;() {
+    private val pending = AtomicBoolean(false)
+
+    override fun observe(owner: LifecycleOwner, observer: Observer&lt;in T&gt;) {
+        super.observe(owner) { t -&gt;
+            if (pending.compareAndSet(true, false)) {
+                observer.onChanged(t)
+            }
+        }
+    }
+
+    override fun setValue(value: T) {
+        pending.set(true)
+        super.setValue(value)
+    }
+}
+</code></pre>
+<h4 id="广为流传的自定义liveevent">广为流传的自定义LiveEvent</h4>
+<p>与事件包装类思路类似，用一个哨兵变量标记。</p>
+<p>一个对数据进行包装，一个对观察者进行包装。</p>
+<p><strong>多个观察者都能消费同一个数据。</strong></p>
+<pre><code class="language-kotlin">open class LiveEvent&lt;T&gt; : MediatorLiveData&lt;T&gt;() {
+
+    private val observers = ArraySet&lt;ObserverWrapper&lt;in T&gt;&gt;()
+
+    @MainThread
+    override fun observe(owner: LifecycleOwner, observer: Observer&lt;in T&gt;) {
+        observers.find { it.observer === observer }?.let { _ -&gt; // existing
+            return
+        }
+        val wrapper = ObserverWrapper(observer)
+        observers.add(wrapper)
+        super.observe(owner, wrapper)
+    }
+
+    @MainThread
+    override fun observeForever(observer: Observer&lt;in T&gt;) {
+        observers.find { it.observer === observer }?.let { _ -&gt; // existing
+            return
+        }
+        val wrapper = ObserverWrapper(observer)
+        observers.add(wrapper)
+        super.observeForever(wrapper)
+    }
+
+    @MainThread
+    override fun removeObserver(observer: Observer&lt;in T&gt;) {
+        if (observer is ObserverWrapper &amp;&amp; observers.remove(observer)) {
+            super.removeObserver(observer)
+            return
+        }
+        val iterator = observers.iterator()
+        while (iterator.hasNext()) {
+            val wrapper = iterator.next()
+            if (wrapper.observer == observer) {
+                iterator.remove()
+                super.removeObserver(wrapper)
+                break
+            }
+        }
+    }
+
+    @MainThread
+    override fun setValue(t: T?) {
+        //setValue调用说明有新的值
+        //设置pending = true，可以消费这个值
+        //如果是重建Activity时，由于ObserverWrapper也会重新初始化，pending = false，没有调用setValue
+        //那么即使走到onChanged，因为pending = false，也不会分发这次值给观察者
+        observers.forEach { it.newValue() }
+        super.setValue(t)
+    }
+
+    private class ObserverWrapper&lt;T&gt;(val observer: Observer&lt;T&gt;) : Observer&lt;T&gt; {
+		
+        //通过pending标志，确保观察者只有在数据更新之后注册的情况下才会收到新的数据，而不会自动收到之前的数据。
+        //比如，当Activity重建时，如果LiveEvent之前已经发送了数据，那么当Activity重新观察时，由于Wrapper在注册时pending是false，同时LiveData的版本号较高，会触发onChanged
+        //setValue/activeStateChanged-&gt;dispatchingValue-&gt;considerNotify-&gt;onChanged。
+        //但此时pending是false，所以不会执行真正的回调。这样就避免了粘性事件的问题。
+        private var pending = false
+
+        override fun onChanged(t: T?) {
+            if (pending) {
+                pending = false
+                observer.onChanged(t)
+            }
+        }
+
+        fun newValue() {
+            pending = true
+        }
+    }
+}
+</code></pre>
+<h4 id="使用-kotlin-flow">使用 Kotlin Flow</h4>
+<p>用 <code>SharedFlow</code> 或 <code>Channel</code> 替代 LiveData，避免粘性。</p>
+<p>这里也各有特点，本篇文章不详细展开。</p>
+<h2 id="setvalue和postvalue的区别及使用场景">setValue和postValue的区别及使用场景？</h2>
+<h2 id="为什么-要在主线程中设置值livedata的观察回调在主线程">为什么 要在主线程中设置值/LiveData的观察回调在主线程？</h2>
+<h2 id="为何用-mpendingdata-而非直接赋值-mdata">为何用 <code>mPendingData</code> 而非直接赋值 <code>mData</code>？</h2>
+<h2 id="postvalue-的线程切换如何实现">postValue() 的线程切换如何实现？</h2>
+<h2 id="多次调用会合并吗">多次调用会合并吗？</h2>
+<pre><code class="language-java">private volatile Object mData;
+volatile Object mPendingData = NOT_SET;
+//两个都是volatile变量，通过内存屏障保证了有序性、可见性
+//mData 用 volatile？保证其他线程getValue能取到最新值。防止指令重排，先赋值完，才允许分发数据。
+
+//设置值。如果有活动的观察者，则值将分派给他们。必须从主线程调用此方法。
+@MainThread
+protected void setValue(T value) {
+    assertMainThread(&quot;setValue&quot;);
+   	//注意版本的更新，只在setValue中更新
+    mVersion++;
+    mData = value;
+    //下面有介绍
+    dispatchingValue(null);
+}
+//posetValue支持在子线程中调用。
+//因为其会自动调度到主线程进行值的设置。
+//同时使用volatile、synchronized保证不出现数据竞争，比如说多个子线程多次调用postValue（不保证每一个值都能分发）
+//如果在主线程 执行已发布的任务之前 多次调用postValue，则只会set最后一个值
+//注意！！！如果先调用postValue(a)，再调用setValue(b)。
+//LiveData观察者先接收到b，再接收到a，是会分发两次的，不重不漏。
+
+protected void postValue(T value) {
+    //用于判断是否要发布任务
+    //true发布，false不发布
+    boolean postTask;
+    //这里是 PendingData的写
+    synchronized (mDataLock) {
+        //在mPostValueRunnable中，会设置mPendingData为NOT_SET
+        //这里用mPendingData == NOT_SET判断
+        //true说明上一次任务执行完了，来了新数据准备再开任务
+        //false是post了新数据，但是任务还没执行
+        postTask = mPendingData == NOT_SET;
+        mPendingData = value;
+    }
+    //false说明post了新数据，但是任务还没执行，
+    //没必要再开新的任务，节省资源，
+    //同时保证数据不出现竞争（启动多个任务更新，可能导致旧的任务最后完成更新，数据错乱）
+    //因为mPendingData是volatile变量，只要写入完，任务立马可见
+    if (!postTask) {
+        return;
+    }
+    //通过 ArchTaskExecutor 调度到主线程进行值的设置
+    //本质上是通过主线程的Handler确保mPostValueRunnable在主线程执行。
+    ArchTaskExecutor.getInstance().postToMainThread(mPostValueRunnable);
+}
+
+private final Runnable mPostValueRunnable = new Runnable() {
+    @SuppressWarnings(&quot;unchecked&quot;)
+    @Override
+    public void run() {
+        Object newValue;
+        //这里是mPendingData的读
+        
+        //如果不使用同步代码，容易导致出现数据竞争：
+        //在执行任务发布value，其他线程调用postValue修改mPendingData值为X，那么发布的value就会不符合预期
+        synchronized (mDataLock) {
+            //不在代码块中执行setValue，而只是设置newValue，
+            //是因为setValue要执行数据分发，如果分发中观察者的回调想要postValue
+            //而这里占有mDatalock锁，那么就会导致死锁。所以使用newValue进行快照中介。
+            newValue = mPendingData;
+
+            mPendingData = NOT_SET;
+            //只有共享变量的正确赋值，才能保证正确工作
+            //算是任务完成，因为已经pending完数据给newValue，设置mPendingData为NOT_SET，
+            //synchronized最后通过storeload内存屏障 推送mPendingData，同时释放锁
+            //如果此时有其他线程想要争取此锁，那么mPendingData == NOT_SET结果为true，
+            //从而可以发布新任务
+        }
+        setValue((T) newValue);
+    }
+};
+</code></pre>
+<h3 id="为什么-要在主线程中设置值livedata的观察回调在主线程-2">为什么 要在主线程中设置值/LiveData的观察回调在主线程？</h3>
+<p>看完源码，这个问题的答案已经很明显了。<br>
+<code>LiveData</code> 的核心设计是确保观察者<strong>在主线程</strong>安全地处理数据（例如更新 UI）。若在子线程直接更新值，可能引发线程竞争或 UI 更新异常。<code>postValue</code> 通过内部线程切换机制规避了这一问题。</p>
+<h3 id="为什么要用mpendingdata而非直接赋值-mdatawhy">为什么要用mPendingData而非直接赋值 <code>mData</code>？Why</h3>
+<p>首先，<code>Livedata</code>需要一个可以子线程更新数据的功能；<br>
+那么就要分为<code>setValue</code>、<code>postValue</code>；<br>
+<code>postValue</code>最终要用<code>setValue</code>实现，因为<code>Livedata</code>主要是为UI数据服务。</p>
+<h4 id="设计成什么样子what">设计成什么样子？What</h4>
+<p>尽可能减少中间态（连续多次的数据状态，是不必要的，会造成UI过度刷新）；<br>
+使用中介<code>mPendingData</code>做一个缓冲区的效果，<strong>只推送新数据（保证最少次数的推送）</strong>，也就是延迟推送；<br>
+否则多次实时推送，大量<code>Runnable</code>容易造成性能问题，<code>Runnable</code>先后完成的顺序也无法保证。</p>
+<h4 id="如何推送how">如何推送？How</h4>
+<p>使用任务调度到主线程。在局部时间内只开一个任务。</p>
+<h4 id="什么时候推送when">什么时候推送？When</h4>
+<p>如果<code>mPendingData</code> 没有值-&gt;那么不推送，有值-&gt;推送。没有值就用<code>NOT_SET</code>来表示。</p>
+<h4 id="为什么不直接使用mdata">为什么不直接使用mData？</h4>
+<p>第一点，因为必须要有一个变量暴露出来，用于存储、分发数据，因为推送不推送、开不开新任务，都要通过<code>NOT_SET</code>的这个状态辅助，<code>mData</code>不可能持有这个状态又有数据。第二点，即使使用KV之类的保证持有状态又有数据，那么如果直接使用<code>mData</code>，那么版本号究竟应该如何更新？</p>
+<p>所以，选择使用一个<code>mPendingData</code>中介。</p>
+<h4 id="新数据如何判断什么时候有新数据哪里有新数据where局部性的新">新数据如何判断（什么时候有新数据）/哪里有新数据？Where（局部性的“新”）</h4>
+<p>我们不能保证判断是否新。但是我们保证<strong>知道在哪会有新数据</strong>。</p>
+<p><code>postValue</code>中会有新数据。但是我们不知道在局部时间内是否还会调用<code>postValue</code>。</p>
+<p>那么就先用任务推送。同时使用锁：</p>
+<ul>
+<li>
+<p>如果任务占有了锁，那么直接推送即可，说明没有<code>postValue</code>在任务之前抢占锁，去发布新值，当前<code>mPendingData</code><strong>自然就是新值</strong>：读取<code>mPendingData</code>，写入<code>newValue</code>，设置<code>mPendingData = NOT_SET</code>准备下一次任务；</p>
+<pre><code class="language-java">public void run() {
+ 	Object newValue;
+ 	//mPendingData的读
+ 	synchronized (mDataLock) {
+ 		newValue = mPendingData;
+ 		mPendingData = NOT_SET;
+ 	}
+ 	setValue((T) newValue);
+}
+</code></pre>
+</li>
+<li>
+<p>如果<code>postValue</code>占有了锁，那么任务被阻塞/或者没有任务：判断是否要开任务<code>postTask</code>，写入<code>mPendingData = value</code>，这就是新值（volatile能刷新给任务新值）</p>
+<pre><code class="language-java">protected void postValue(T value) {
+ 	boolean postTask;
+ 	synchronized (mDataLock) {
+            postTask = mPendingData == NOT_SET;
+            mPendingData = value;
+ 	}
+ 	if (!postTask) {
+            return;
+ 	}
+   ArchTaskExecutor.getInstance().postToMainThread(mPostValueRunnable);
+}
+</code></pre>
+</li>
+</ul>
+<p>同时<code>锁+volatile</code>也保证了，在<code>mPendingData</code>推送时，任务不会突然把<code>mPendingData</code>写为<code>NOT_SET</code>；在读取<code>mPendingData</code>时，<code>postValue</code>不会突然把<code>mPendingData</code>写为某个新值。</p>
+<h2 id="版本号的作用">版本号的作用？</h2>
+<h2 id="mversion-的初始值是多少">mVersion 的初始值是多少？</h2>
+<p>版本号确保每次数据更新都被跟踪。</p>
+<p><code>Livedata</code>维护一个版本号，观察者也维护一个版本号。</p>
+<p>如果观察者版本号落后于<code>Livedata</code>，那么就会分发数据。</p>
+<p>如果观察者版本号大于<code>Livedata</code>，那么就会跳过分发，以免重复数据，消耗额外资源（基本没遇到这种情况）。</p>
+<pre><code class="language-kotlin">static final int START_VERSION = -1;
+
+public LiveData(T value) {
+ 	mData = value;
+ 	mVersion = START_VERSION + 1;
+}
+
+
+public LiveData() {
+ 	mData = NOT_SET;
+ 	mVersion = START_VERSION;
+}
+
+// 初始值不为null，版本号 0
+val liveDataWithValue = MutableLiveData(&quot;init&quot;)
+
+// 初始值为 null，版本号 -1
+val liveDataEmpty = MutableLiveData&lt;String&gt;()
+liveDataEmpty.value = &quot;data&quot; // 版本号变为 0
+</code></pre>
+<h2 id="dispatchingvalue-方法中-initiator-参数的作用">dispatchingValue() 方法中 <code>initiator</code> 参数的作用？</h2>
+<h2 id="具体的数据分发流程">具体的数据分发流程？</h2>
+<h2 id="分发数据时是如何保证不重复分发">分发数据时是如何保证不重复分发？</h2>
+<p>（<strong>注意：不重复不是指两次同一个值就不分发</strong>）</p>
+<blockquote>
+<p>observe -&gt; onStateChanged -&gt; activeStateChanged -&gt; dispatchingValue -&gt; considerNotify</p>
+<p>observeForever -&gt; activeStateChanged -&gt; dispatchingValue -&gt; considerNotify</p>
+<p>activeStateChanged -&gt; changingActiveCounter</p>
+</blockquote>
+<pre><code class="language-java">void dispatchingValue(@Nullable ObserverWrapper initiator) {
+    //mDispatchingValue为true说明重入了。
+    //如果在分发数据的回调OnChange中，改变了Owenr状态或者添加了observer
+    //就说明之前的分发无效，用mDispatchInvalidated做标识
+    //提醒调用栈下的（或者说父dispatchingValue），需要重新分发
+    //然后return，没必要再开一个循环，否则容易出现死循环
+    if (mDispatchingValue) {
+        mDispatchInvalidated = true;
+        return;
+    }
+    //用于处理重入的flag，表明已经有一个分发数据的任务了
+    mDispatchingValue = true;
+    do {
+        //保证如果没有重入，循环就会结束
+        mDispatchInvalidated = false;
+ 		//调用dispatchingValue传入的就两个值，一个this，一个null
+        //this说明只用把数据分发给传入的观察者就好
+        //null说明数据需要分发给全体观察者
+        if (initiator != null) {
+            considerNotify(initiator);
+            initiator = null;
+        } else {
+            for (Iterator&lt;Map.Entry&lt;Observer&lt;? super T&gt;, ObserverWrapper&gt;&gt; iterator =		
+                 	//使用iteratorWithAdditions迭代器，保证在回调中添加新的Observer也能接收到新的数据分发
+                    mObservers.iteratorWithAdditions(); iterator.hasNext(); ) {
+                considerNotify(iterator.next().getValue());
+                if (mDispatchInvalidated) {
+                    break;
+                }
+            }
+        }
+        //之前的分发无效，继续循环
+    } while (mDispatchInvalidated);
+    mDispatchingValue = false;
+}
+
+//负责判断是否触发观察者的 onChanged 回调。此时需要确保：
+//观察者处于活跃状态（如 STARTED 或 RESUMED 的 Activity/Fragment）。
+//数据版本号（mVersion）比观察者记录的版本号（observer.mLastVersion）更高，避免重复通知。
+private void considerNotify(ObserverWrapper observer) {
+    //如果是setValue触发的数据分发给所有观察者
+    //那么可能有一部分观察Livedata的观察者是不活跃的（Livedata可能是全局共享的），跳过
+    if (!observer.mActive) {
+        return;
+    }
+
+    //由于 Lifecycle 有可能状态值 State 已经切换到了非活跃状态，但 LifecycleBoundObserver 还未收到通知
+    //所以为了避免意外情况，此处主动检查Observer的Owner的活跃状态并判断是否需要更新其活跃状态
+    //（注意AlwaysActiveObserver#shouldBeActive() 总是返回true）
+    if (!observer.shouldBeActive()) {
+        //说明Owner不活跃，把Observer设置为不活跃先
+        observer.activeStateChanged(false);
+        return;
+    }
+    //现在我们假设已经分发过一次，Livedata版本为1，使得观察者版本为1
+    //现在Owner进入非活跃，又再次活跃
+    //那么就会触发activeStateChanged -&gt; dispatchingValue(this) -&gt; considerNotify，所以需要判断&gt;=，
+    //确保了同一个数据不会被重复发送给同一个观察者，从而减少了不必要的 UI 刷新或其他处理逻辑。
+    //如果判断!=的话，observer.mLastVersion &lt; mVersion需要更新这种情况，也会跳过，使得分发不到新数据。
+    if (observer.mLastVersion &gt;= mVersion) {
+        return;
+    }
+    //更新观察者的版本号为Livedata的
+    //（注意如果想要用Livedata实现事件总线，建议不要从版本号下手）
+    observer.mLastVersion = mVersion;
+    //数据分发回调
+    observer.mObserver.onChanged((T) mData);
+}
+</code></pre>
+<p>调用<code>dispatchingValue</code>传入的就两个值，一个<code>this</code>，一个<code>null</code>：<br>
+<code>this</code>说明只用把数据分发给传入的观察者就好；<br>
+<code>null</code>说明数据需要分发给全体观察者。</p>
+<h2 id="自定义livedata需要重写哪些方法">自定义LiveData需要重写哪些方法？</h2>
+<p>一般会选择重写，<code>onActive()/onInactive()</code>。</p>
+<p>否则，直接使用<code>MutableLivedata</code>即可。</p>
+<p><strong><code>onActive()</code></strong></p>
+<ul>
+<li><strong>触发时机</strong>：当 <code>LiveData</code> <strong>首次有活跃的观察者</strong>（例如 <code>Activity/Fragment</code> 处于 <code>STARTED</code> 或 <code>RESUMED</code> 状态）时调用。</li>
+<li><strong>作用</strong>：在此方法中<strong>注册数据源的监听</strong>（如网络请求、传感器、数据库监听等），开始获取数据。</li>
+</ul>
+<p><strong><code>onInactive()</code></strong></p>
+<ul>
+<li><strong>触发时机</strong>：当 <code>LiveData</code> <strong>最后一个活跃的观察者变为非活跃状态</strong>时调用。</li>
+<li><strong>作用</strong>：在此方法中<strong>释放资源或停止监听</strong>，避免内存泄漏或无效更新。</li>
+</ul>
+<p>举例：</p>
+<pre><code class="language-kotlin">class LocationLiveData(context: Context) : LiveData&lt;Location&gt;() {
+    private val locationManager = context.getSystemService(LOCATION_SERVICE) as LocationManager
+    private val listener = LocationListener { location -&gt;
+        value = location // 位置变化时更新数据
+    }
+
+    override fun onActive() {
+        super.onActive()
+        // 有活跃观察者时开始监听
+        locationManager.requestLocationUpdates(
+            LocationManager.GPS_PROVIDER, 
+            0L, 
+            0f, 
+            listener
+        )
+    }
+
+    override fun onInactive() {
+        super.onInactive()
+        // 无活跃观察者时停止监听
+        locationManager.removeUpdates(listener)
+    }
+}
+</code></pre>
+<h2 id="mediatorlivedata-的使用场景如何合并多个livedata">MediatorLiveData 的使用场景/如何合并多个Livedata？</h2>
+<h2 id="为什么mediatorlivedata内部类source与livedata对版本号检查的逻辑不同">为什么MediatorLiveData内部类Source与Livedata对版本号检查的逻辑不同？</h2>
+<pre><code class="language-java">//MutableLiveData仅仅是public了 set、postValue，其他相对于Livedata不变。
+//具体应用比如：联网状态 + 本地缓存 -&gt; UI 显示
+public class MediatorLiveData&lt;T&gt; extends MutableLiveData&lt;T&gt; {
+    private SafeIterableMap&lt;LiveData&lt;?&gt;, Source&lt;?&gt;&gt; mSources = new SafeIterableMap&lt;&gt;();
+
+    public MediatorLiveData() {
+        super();
+    }
+
+    public MediatorLiveData(T value) {
+        super(value);
+    }
+
+	//注意:addSource 不限制源的数据类型
+    @MainThread
+    public &lt;S&gt; void addSource(@NonNull LiveData&lt;S&gt; source, @NonNull Observer&lt;? super S&gt; onChanged) {
+        if (source == null) {
+            throw new NullPointerException(&quot;source cannot be null&quot;);
+        }
+        //可以理解为，传入的onChanged:Observer是一个转换器，source数据分发后
+        //onChanged把数据进行一次map变换，或者是满足某个条件后截断/更换其他数据源
+        //此时只需要再observe MediatorLiveData，即可获得符合要求的数据
+        
+        //给传入的onChanged:Observer进行包装，绑定对应的source
+        Source&lt;S&gt; e = new Source&lt;&gt;(source, onChanged);
+        Source&lt;?&gt; existing = mSources.putIfAbsent(source, e);
+        //如果给定的 LiveData 已添加为源，但传入不同的 Observer，会抛出异常。
+        //也就是认为onChanged对source的转化只需要一次/只需要一个转换器即可，以免浪费资源。
+        
+        //MediatorLivedata可以添加多个源Livedata，多个源Livedata可以有同一个Observer
+        //也就是认为多个数据源，可能都要一个转换器就能处理。
+        //也就是一个源对一个转化器，一个转换器对多个源。
+        if (existing != null &amp;&amp; existing.mObserver != onChanged) {
+            throw new IllegalArgumentException(
+                    &quot;This source was already added with the different observer&quot;);
+        }
+        if (existing != null) {
+            return;
+        }
+        //如果MediatorLivedata有活跃观察者（调用了observe/observeForver分发添加的观察者，而不是addSource），那么启动转化器onChanged对源Livedata进行观察。
+        if (hasActiveObservers()) {
+            e.plug();
+        }
+    }
+
+	//截断数据源Livedata，同时停止 转化器 对源LiveData进行观察
+    @MainThread
+    public &lt;S&gt; void removeSource(@NonNull LiveData&lt;S&gt; toRemote) {
+        Source&lt;?&gt; source = mSources.remove(toRemote);
+        if (source != null) {
+            source.unplug();
+        }
+    }
+	
+    @CallSuper
+    @Override
+    protected void onActive() {
+        //当 MediatorLiveData 变为活跃状态时，启动转化器 对 对应的源Livedata进行观察
+        for (Map.Entry&lt;LiveData&lt;?&gt;, Source&lt;?&gt;&gt; source : mSources) {
+            source.getValue().plug();
+        }
+    }
+	
+    @CallSuper
+    @Override
+    protected void onInactive() {
+        //当 MediatorLiveData 变为非活跃状态时，停止转化器对 对应的源Livedata进行观察
+        //这里重写onInactive()的关键在于，Source观察数据源使用的observeForever
+        //所以必须手动释放资源
+        for (Map.Entry&lt;LiveData&lt;?&gt;, Source&lt;?&gt;&gt; source : mSources) {
+            source.getValue().unplug();
+        }
+    }
+	
+    //注意：Source本质也是一个观察者，具有onChanged回调
+    private static class Source&lt;V&gt; implements Observer&lt;V&gt; {
+        final LiveData&lt;V&gt; mLiveData;
+        //维护的这个mObserver就是转换器
+        final Observer&lt;? super V&gt; mObserver;
+        //注意这里维护了一个版本号
+        int mVersion = START_VERSION;
+
+        Source(LiveData&lt;V&gt; liveData, final Observer&lt;? super V&gt; observer) {
+            mLiveData = liveData;
+            mObserver = observer;
+        }
+		
+        //由于本身本质也是一个观察者，所以可以观察数据源Livedata
+        //使用observeForever，是希望监听数据源不受到Owner的生命周期影响，
+        //所有数据都能监听，只有不被需要时才不会监听
+        //同时也可以确保仅当自身活跃时才监听源数据，与外部组件的生命周期解耦。
+        void plug() {
+            mLiveData.observeForever(this);
+        }
+
+        void unplug() {
+            mLiveData.removeObserver(this);
+        }
+		
+        @Override
+        public void onChanged(@Nullable V v) {
+            //当数据源 LiveData 分发数据时，检查版本号
+            //Source起到了一个Adapter的作用，使得用户不用关心数据源的状态
+            //只要观察MediatorLivedata即可得到符合要求的数据。
+            
+            //与Livedata判断版本号的逻辑不同，Livedata判断是&lt;时需要回调；Source判断是不等于就要回调。
+            //这有什么区别？我认为没有区别。因为版本号是严格递增的，
+            //如果不一样就一定说明观察者版本号 一定小于 Livedata。
+            //以及观察者版本号 &gt; Livedata版本号这种事情不可能发生，除非反射或自定义
+            if (mVersion != mLiveData.getVersion()) {
+                mVersion = mLiveData.getVersion();
+                //转发给包装的转换器mObserver
+                mObserver.onChanged(v);
+            }
+        }
+    }
+}
+
+</code></pre>
+<h2 id="transformationsmap-和-switchmap-的区别底层如何实现">Transformations#map 和 switchMap 的区别？底层如何实现？</h2>
+<pre><code class="language-kotlin">//this Livedata&lt;X&gt; -&gt; MediatorLivedata&lt;Y&gt; -&gt; Y
+fun &lt;X, Y&gt; LiveData&lt;X&gt;.map(
+    //transform是一个函数，把X类型转化为Y类型
+    transform: (@JvmSuppressWildcards X) -&gt; (@JvmSuppressWildcards Y)
+): LiveData&lt;Y&gt; {
+    //注意这里使用了MeidatorLivedata完成，算是对MeidatorLivedata的包装
+    //如果this Livedata有值，那么先进行transform，响应初始态
+    val result = if (isInitialized) {
+        MediatorLiveData(transform(value as X))
+    } else {
+        MediatorLiveData()
+    }
+    //监听this Livedata，把Livedata&lt;X&gt;的新数据X转化为Y
+    //map函数返回的是Livedata&lt;Y&gt;,也就是MediatorLivedata&lt;Y&gt;
+    //（result.value =..., 这里调用了setValue，进行分发数据Y）
+    result.addSource(this) { x -&gt; result.value = transform(x) }
+    return result
+}
+
+//this Livedata&lt;X&gt; -&gt; old switch to new Livedata&lt;Y&gt; -&gt; MediatorLivedata&lt;Y&gt; -&gt; Y
+fun &lt;X, Y&gt; LiveData&lt;X&gt;.switchMap(
+    //transform是一个函数，把X类型转化为Livedata&lt;Y&gt;类型
+    transform: (@JvmSuppressWildcards X) -&gt; (@JvmSuppressWildcards LiveData&lt;Y&gt;)?
+): LiveData&lt;Y&gt; {
+    //这里liveData虽然是一个局部变量，但是后续被result.addSource闭包使用
+    //从而升级，与MediatorLivedata的生命周期相同
+    //相对于缓存了每一次新的数据源
+    var liveData: LiveData&lt;Y&gt;? = null
+    //如果this Livedata&lt;X&gt;有值value
+    val result = if (isInitialized) {
+        //那么先进行transform 变成新的Livedata&lt;Y&gt;，响应初始态
+        //这里使用了泛型所以需要value as X
+        val initialLiveData = transform(value as X)
+        //transform后，判断转化结果是否为无效值
+        if (initialLiveData != null &amp;&amp; initialLiveData.isInitialized) {
+            MediatorLiveData&lt;Y&gt;(initialLiveData.value)
+        } else {
+            //可能是this Livedata&lt;X&gt;的值是无效的，比如用户输入空格字符&quot; &quot;
+            //或者转化出现问题
+            MediatorLiveData&lt;Y&gt;()
+        }
+    } else {
+        MediatorLiveData&lt;Y&gt;()
+    }
+    result.addSource(this) { value: X -&gt;
+        //MediatorLivedata作为中介，使用这个匿名类onChanged：Observer转化器
+        //中介观察this Livedata来了新值value，也就是源值变化
+        //那么把新值转发给转化器，进行transform
+        val newLiveData = transform(value)
+        //如果转化结果与上一次没有差异，就没有必要往下走，直接返回，节省资源
+        if (liveData !== newLiveData) {
+            //有新的livedata了，如果旧livedata不为null，移除旧livedata作为数据源
+            if (liveData != null) {
+                result.removeSource(liveData!!)
+            }
+            liveData = newLiveData
+            //允许 transform 返回 null，也就是可能this Livedata是无效的
+            //比如用户输入空格字符&quot; &quot;
+            if (liveData != null) {
+                //进行监听新的 LiveData，如果有新的值，那么转发到结果 MediatorLiveData
+                //与map不同的是，map监听的始终是this Livedata，而switchMap是可以切换数据源的
+                //setValue分发新的数据Y
+                //这里 { y -&gt; result.setValue(y) } 是转化器，也就是onChanged:Observer
+                result.addSource(liveData!!) { y -&gt; result.setValue(y) }
+                //在addSource中addSource
+                //这两次的Livedata&lt;Y&gt;, Y数据类型不一致
+                //转化器也不一致
+                //可以认为MediatorLivedata实际上 是工具类
+            }
+        }
+    }
+    //本质上返回的是 MediatorLivedata，这就是最终的Livedata&lt;Y&gt;
+    return result
+}
+</code></pre>
+<p>总结一下：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">方法</th>
+<th style="text-align:left">map</th>
+<th style="text-align:left">switchMap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>返回值类型</strong></td>
+<td style="text-align:left">LiveData<Y></td>
+<td style="text-align:left">LiveData<Y></td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>数据源管理</strong></td>
+<td style="text-align:left">永久监听同一源</td>
+<td style="text-align:left">动态切换监听源</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>内存管理</strong></td>
+<td style="text-align:left">始终持有源 LiveData 的监听</td>
+<td style="text-align:left">自动清理旧源监听</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>适用场景</strong></td>
+<td style="text-align:left">简单数据类型转换（如字符串处理）</td>
+<td style="text-align:left">数据源需要动态变化（如搜索关键词）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>执行次数</strong></td>
+<td style="text-align:left">每次源变化都执行转换</td>
+<td style="text-align:left">仅当产生新 LiveData 时执行转换</td>
+</tr>
+</tbody>
+</table>
+<h3 id="例子">例子</h3>
+<pre><code class="language-kotlin">// ViewModel 中定义
+class UserViewModel : ViewModel() {
+    private val _userLiveData = MutableLiveData&lt;User&gt;()
+    val userDescription: LiveData&lt;String&gt; = 
+        Transformations.map(_userLiveData) { user -&gt;
+            &quot;${user.name} 的年龄是 ${user.age} 岁&quot; // 直接转换
+        }
+
+    fun updateUser(user: User) {
+        _userLiveData.value = user
+    }
+}
+
+// Activity/Fragment 中观察
+userViewModel.userDescription.observe(viewLifecycleOwner) { description -&gt;
+    textView.text = description
+}
+
+// ViewModel 中定义
+class UserDetailViewModel : ViewModel() {
+    private val _userIdLiveData = MutableLiveData&lt;String&gt;()
+    val userDetail: LiveData&lt;UserDetail&gt; = 
+        Transformations.switchMap(_userIdLiveData) { userId -&gt;
+            repository.loadUserDetail(userId) // 返回新的 LiveData
+        }
+
+    fun setUserId(userId: String) {
+        _userIdLiveData.value = userId
+    }
+}
+
+// Repository 中定义
+class UserRepository {
+    fun loadUserDetail(userId: String): LiveData&lt;UserDetail&gt; {
+        // 模拟从网络或数据库获取数据
+        val result = MutableLiveData&lt;UserDetail&gt;()
+        viewModelScope.launch {
+            val detail = apiService.fetchUserDetail(userId)
+            result.postValue(detail)
+        }
+        return result
+    }
+}
+</code></pre>
+<h2 id="transformationsdistinctuntilchanged是如何实现防抖的">Transformations#distinctUntilChanged是如何实现防抖的？</h2>
+<pre><code class="language-kotlin">//创建一个新的[LiveData]对象，仅在源LiveData（this）的值发生变化时发射值。
+@JvmName(&quot;distinctUntilChanged&quot;)
+@MainThread
+@CheckResult
+fun &lt;X&gt; LiveData&lt;X&gt;.distinctUntilChanged(): LiveData&lt;X&gt; {
+    //强制发射第一次的值
+    var firstTime = true
+    //检查this LiveData是否有初始值，有初始值，如果观察了那么就会发送一次（Livedata特性：粘性数据）
+    //设置firstTime = false，防止后续如果还是这个值，从而造成的重复发送
+    val outputLiveData = if (isInitialized) {
+        firstTime = false
+        MediatorLiveData&lt;X&gt;(value)
+    } else {
+        MediatorLiveData&lt;X&gt;()
+    }
+    //使用MediatorLivedata监听this Livedata
+    outputLiveData.addSource(this) { value -&gt;
+        //这里是匿名类 转换器 onChanged:Observer                           
+        //this Livedata分发新值，先保存上一次的值                            
+        val previousValue = outputLiveData.value
+            //第一次赋值过来，直接发送
+        if (firstTime ||
+            //前一次没有值/或者置空，新发的值不为空；发送该值
+            previousValue == null &amp;&amp; value != null ||
+            //前一次有值，而且不等于新发的值：发送该值
+            previousValue != null &amp;&amp; previousValue != value
+        ) {
+            //直接设置为false，保证后续不会强制发送值
+            //只有满足以上三种情况，才会发送
+            firstTime = false
+            //MediatorLivedata setValue分发新值
+            outputLiveData.value = value
+        }
+    }
+    return outputLiveData
+}
+</code></pre>
+<h2 id="computablelivedata是什么有什么作用">ComputableLiveData是什么？有什么作用？</h2>
+<p><code>ComputableLiveData</code> 提供了一种更加安全地执行耗时任务的思路，其特点是：以 LiveData 作为中介，分发任务执行结果，从而实现带有生命周期的、响应式的触发耗时任务。</p>
+<pre><code class="language-kotlin">//能够在有活跃观察者时被无效化并重新计算值。
+//通过调用 [invalidate] 方法使其无效，若有活跃观察者则触发 [compute] 方法重新计算。
+@RestrictTo(RestrictTo.Scope.LIBRARY_GROUP_PREFIX)
+abstract class ComputableLiveData&lt;T&gt; @JvmOverloads
+constructor(
+    //默认实现的线程池
+    //也可以自己传入
+    internal val executor: Executor = ArchTaskExecutor.getIOThreadExecutor()
+) {
+	//内部管理的LiveData实例，重写onActive方法以在有观察者时触发计算
+    //refreshRunnable最终调用compute方法
+    private val _liveData: LiveData&lt;T?&gt; =
+        object : LiveData&lt;T?&gt;() {
+            //当Livedata的观察者数量从 0 到 1 时触发，其他情况不触发
+            override fun onActive() {
+                // 在指定执行器上启动计算任务
+                executor.execute(refreshRunnable) 
+            }
+    }
+    /**
+     * The LiveData managed by this class.
+     */
+    open val liveData: LiveData&lt;T?&gt; = _liveData
+    //标记当前数据是否无效（需要重新计算）
+    internal val invalid = AtomicBoolean(true)
+    //标记当前是否正在计算中（防止并发计算），用AtomicBoolean实现锁的效果（CAS机制）
+    internal val computing = AtomicBoolean(false)
+
+    @JvmField
+    @VisibleForTesting
+    //在后台持续执行的Runnable
+    internal val refreshRunnable = Runnable {
+        var computed: Boolean // 标记是否执行过一次计算
+        //do-while 保证无论如何先执行一次
+        do {
+            //说明没有计算过
+            computed = false
+            //计算只能在 1 个线程中发生，但没有必要用锁。
+            //将computing从false→true
+            if (computing.compareAndSet(false, true)) {
+                try {
+                    var value: T? = null
+                    //只要invalid为true，在这里阻塞循环，直到没有invalid为true的通知
+                    //invalid如果不等于期望值（这里是true），CAS返回false
+                    //CAS返回false，也就是invalid为false，那么就不会执行计算
+                    //（其他线程处理完invalid执行计算后，置invalid为false，当前线程抢占锁，同时又没有invalid为true通知）
+                    while (invalid.compareAndSet(true, false)) {
+                        computed = true
+                        value = compute()
+                    }
+                    if (computed) {
+                        //走到这里说明，执行过计算 和 没有invalid为true的通知，那么进行分发
+                        //注意，可能在post中又来了invalid为true的通知，所以外面有一个循环while
+                        liveData.postValue(value)
+                    }
+                } finally {
+                    //释放computing lock，使得其他线程可以抢占锁
+                    //其他线程一看computing为false，那么可以尝试执行compute方法了
+                    //computing设置为false
+                    computing.set(false)
+                }
+            }
+          //如果计算过一次，同时数据失效，那么再循环一次
+          //为什么需要判断computed？computed为false说明本次循环未执行计算；
+          //比如，当computing 被其他线程占用，computed为false，此时会跳过计算
+          //加入对computed判断的原因是：
+          //1、防止没有抢占到computing锁的，持续自旋，造成资源浪费（大家都订阅一个生产者，新数据来了都能收到，没有必要自旋）
+          //2、请求合并：在完成一次计算后（computed = true），主动检查是否仍有新的无效化请求（invalid = true）；
+          //如果有，则立即继续循环处理，无需重新提交任务到Runnable，实现了请求合并，减少计算次数。
+        } while (computed &amp;&amp; invalid.get())
+    }
+
+    //使 LiveData 失效。当有活跃的观察者时，这将触发对 [compute] 的调用。
+   	//在主线程执行
+    open fun invalidate() {
+        ArchTaskExecutor.getInstance().executeOnMainThread(invalidationRunnable)
+    }
+    
+    //只在主线程触发 executeOnMainThread
+    @JvmField
+    @VisibleForTesting
+    internal val invalidationRunnable = Runnable {
+        // 检查是否有活跃观察者
+        val isActive = liveData.hasActiveObservers()
+        // CAS操作将invalid从false→true，若成功且存在活跃观察者，则触发计算
+        if (invalid.compareAndSet(false, true)) {
+            if (isActive) {
+                //最终触发compute()
+                executor.execute(refreshRunnable)
+            }
+        }
+    }
+
+   	//自己实现的耗时任务
+    @WorkerThread
+    protected abstract fun compute(): T
+}
+</code></pre>
+<h2 id="livedata如何与viewmodel配合为什么推荐在-viewmodel-中持有-livedata">LiveData如何与ViewModel配合？为什么推荐在 ViewModel 中持有 LiveData？</h2>
+<p>见Viewmodel源码阅读篇</p>
+<h2 id="补充">补充</h2>
+<p>请注意，如果使用的<code>LiveData</code>有关于UI，请不要选择 Fragment 作为 LiveData 的 Owner，LiveData虽然会在<code>DESTROYED</code>状态解绑，但是<code>Fragment#View</code>的生命周期是比<code>Fragment</code>短的。</p>
+<p>1.当 <code>Fragment 的 View</code> 被销毁（<code>onDestroyView()</code> 已调用），但 <code>Fragment</code> 实例仍存活时，LiveData 的观察者未被自动移除。此时如果 LiveData 更新数据，回调中尝试操作已销毁的 View，会引发崩溃。</p>
+<p>2.当使用<code>FragmentManager#replace</code> 的页面跳转，如果 <code>Framgent</code> 实例被复用，也就是并没有发生 <code>onDestroy</code>, 但是 Fragment的 View 会重建，导致重新 <code>onCreateView</code>, 这使得 <code>Observer</code> 在<code>onCreateView</code>会被 add 两次，而没有 <code>remove</code> 旧的 <code>Observer</code> 。导致同一回调会执行两次，可能出现数据异常或者资源浪费。</p>
+<p>解决办法就是，使用<code>Fragment#View</code>作为<code>Owner</code>，也就是<code>ViewLifecycleOwner</code>。</p>
+<p>不过，从当前最佳实践来看，<strong>也请不要 使用 Fragment#View 作为 Owner</strong>。LiveData 应该只被ViewModel持有，而非UI。</p>
+<p><strong>UI的职责是只应该订阅Data的状态是否发生变化，从而更新UI。</strong></p>
+<h1 id="总结经验"><strong>总结经验</strong></h1>
+<ul>
+<li><strong>解耦与感知</strong>：UI与数据解耦，自动生命周期管理。</li>
+<li><strong>线程安全</strong>：封装线程切换细节。</li>
+<li><strong>粘性事件</strong>：版本号机制确保数据同步。</li>
+<li><strong>可扩展性</strong>：通过<code>MediatorLiveData</code>组合多个数据源。</li>
+</ul>
+<h1 id="设计哲学迁移"><strong>设计哲学迁移</strong></h1>
+<ul>
+<li><strong>生命周期解耦</strong>: 任何框架可引入类似观察者包装机制（如 Web 路由监听 + 页面状态）。</li>
+<li><strong>数据版本控制</strong>: 在状态管理中避免重复触发（如 Redux 的 action 序列号）。</li>
+<li><strong>线程安全透明化</strong>: 封装底层线程切换（如 Kotlin 协程 <code>withContext</code>）。</li>
+</ul>
+<h1 id="参考">参考</h1>
+<blockquote>
+<p>https://github.com/leavesCZY/AndroidGuide/blob/master/从源码看 Jetpack（3）LiveData 源码详解.md</p>
+</blockquote>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E5%8F%91%E7%8E%B0%E9%97%AE%E9%A2%98"><strong>发现问题</strong></a></li>
+<li><a href="#%E8%A7%A3%E5%86%B3%E6%80%9D%E8%B7%AF"><strong>解决思路</strong></a>
+<ul>
+<li><a href="#%E6%A0%B8%E5%BF%83%E9%9C%80%E6%B1%82"><strong>核心需求</strong></a></li>
+<li><a href="#%E5%85%B3%E9%94%AE%E6%80%9D%E8%B7%AF"><strong>关键思路</strong></a></li>
+</ul>
+</li>
+<li><a href="#%E8%A7%A3%E5%86%B3%E6%96%B9%E6%A1%88%E6%A0%B8%E5%BF%83%E6%BA%90%E7%A0%81"><strong>解决方案（核心源码）</strong></a>
+<ul>
+<li><a href="#%E6%A0%B8%E5%BF%83%E7%B1%BB%E6%8E%A5%E5%8F%A3"><strong>核心类/接口</strong></a></li>
+<li><a href="#%E8%A7%82%E5%AF%9F%E8%80%85%E5%8C%85%E8%A3%85"><strong>观察者包装</strong></a></li>
+<li><a href="#%E6%95%B0%E6%8D%AE%E7%89%88%E6%9C%AC%E6%8E%A7%E5%88%B6"><strong>数据版本控制</strong></a></li>
+<li><a href="#%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91%E6%9C%BA%E5%88%B6"><strong>事件分发机制</strong></a></li>
+</ul>
+</li>
+<li><a href="#%E6%BA%90%E7%A0%81%E6%B5%81%E7%A8%8B%E5%9B%BE%E5%85%B3%E9%94%AE%E6%B5%81%E7%A8%8B">源码流程图（关键流程）</a>
+<ul>
+<li><a href="#%E8%A7%82%E5%AF%9F%E8%80%85%E6%B3%A8%E5%86%8C%E9%98%B6%E6%AE%B5">观察者注册阶段</a></li>
+<li><a href="#%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F%E4%BA%8B%E4%BB%B6%E5%A4%84%E7%90%86">生命周期事件处理</a></li>
+<li><a href="#%E6%95%B0%E6%8D%AE%E6%9B%B4%E6%96%B0%E6%B5%81%E7%A8%8B">数据更新流程</a></li>
+</ul>
+</li>
+<li><a href="#%E6%B3%A8%E6%84%8F">注意</a>
+<ul>
+<li><a href="#observe%E4%B8%8E-observeforever-%E5%8C%BA%E5%88%AB%E4%BD%95%E6%97%B6%E9%9C%80%E6%89%8B%E5%8A%A8%E7%A7%BB%E9%99%A4%E8%A7%82%E5%AF%9F%E8%80%85"><code>observe()</code>与 <code>observeForever()</code> 区别？何时需手动移除观察者？</a></li>
+<li><a href="#%E6%96%B0%E8%A7%82%E5%AF%9F%E8%80%85%E5%A6%82%E4%BD%95%E6%94%B6%E5%88%B0%E6%95%B0%E6%8D%AE">新观察者如何收到数据？</a>
+<ul>
+<li><a href="#observe">observe()</a></li>
+<li><a href="#observeforever">observeForever()</a></li>
+<li><a href="#%E6%80%BB%E7%BB%93">总结</a></li>
+</ul>
+</li>
+<li><a href="#livedata-%E5%A6%82%E4%BD%95%E9%81%BF%E5%85%8D%E5%86%85%E5%AD%98%E6%B3%84%E6%BC%8F">LiveData 如何避免内存泄漏？</a></li>
+<li><a href="#lifecycleboundobserver-%E7%9A%84%E4%BD%9C%E7%94%A8%E6%98%AF%E4%BB%80%E4%B9%88">LifecycleBoundObserver 的作用是什么？</a></li>
+<li><a href="#lifecycleowner%E7%8A%B6%E6%80%81%E6%98%AF%E5%A6%82%E4%BD%95%E5%BD%B1%E5%93%8D%E6%95%B0%E6%8D%AE%E5%88%86%E5%8F%91%E7%9A%84">LifecycleOwner状态是如何影响数据分发的？</a></li>
+<li><a href="#lifecyclestatestarted-%E4%B8%8E-resumed-%E5%AF%B9-livedata-%E7%9A%84%E5%BD%B1%E5%93%8D%E5%B7%AE%E5%BC%82"><code>Lifecycle.State.STARTED</code> 与 <code>RESUMED</code> 对 LiveData 的影响差异？</a></li>
+<li><a href="#oninactive%E8%83%BD%E4%B8%8D%E8%83%BD%E5%88%A4%E6%96%AD%E6%98%AF%E5%90%A6%E8%BF%98%E5%AD%98%E5%9C%A8%E8%A7%82%E5%AF%9F%E8%80%85">onInactive能不能判断是否还存在观察者？</a>
+<ul>
+<li><a href="#%E6%80%BB%E7%BB%93-2">总结</a>
+<ul>
+<li><a href="#lifecyclestatestarted-%E4%B8%8E-resumed-%E5%AF%B9-livedata-%E7%9A%84%E5%BD%B1%E5%93%8D%E5%B7%AE%E5%BC%82-2"><code>Lifecycle.State.STARTED</code> 与 <code>RESUMED</code> 对 LiveData 的影响差异？</a></li>
+<li><a href="#%E6%B3%A8%E6%84%8Foninactive%E8%83%BD%E4%B8%8D%E8%83%BD%E5%88%A4%E6%96%AD%E6%98%AF%E5%90%A6%E8%BF%98%E5%AD%98%E5%9C%A8%E8%A7%82%E5%AF%9F%E8%80%85">注意：onInactive能不能判断是否还存在观察者？</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E7%B2%98%E6%80%A7%E6%95%B0%E6%8D%AE%E6%98%AF%E4%BB%80%E4%B9%88">粘性数据是什么？</a></li>
+<li><a href="#livedata%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E7%B2%98%E6%80%A7%E7%9A%84">Livedata是如何实现粘性的？</a></li>
+<li><a href="#%E5%A6%82%E4%BD%95%E9%81%BF%E5%85%8D%E9%87%8D%E5%A4%8D%E6%B6%88%E8%B4%B9%E9%9D%9E%E7%B2%98%E6%80%A7livedata%E7%9A%84%E5%AE%9E%E7%8E%B0">如何避免重复消费(非粘性Livedata的实现)？</a>
+<ul>
+<li><a href="#%E9%81%BF%E5%85%8D%E9%87%8D%E5%A4%8D%E6%B6%88%E8%B4%B9%E6%94%B6%E5%88%B0%E7%B2%98%E6%80%A7%E6%95%B0%E6%8D%AE%E7%9A%84%E6%96%B9%E6%B3%95">避免重复消费/收到粘性数据的方法</a>
+<ul>
+<li><a href="#%E4%BA%8B%E4%BB%B6%E5%8C%85%E8%A3%85%E7%B1%BB">事件包装类</a></li>
+<li><a href="#%E4%BD%BF%E7%94%A8-singleliveevent">使用 SingleLiveEvent</a></li>
+<li><a href="#%E5%B9%BF%E4%B8%BA%E6%B5%81%E4%BC%A0%E7%9A%84%E8%87%AA%E5%AE%9A%E4%B9%89liveevent">广为流传的自定义LiveEvent</a></li>
+<li><a href="#%E4%BD%BF%E7%94%A8-kotlin-flow">使用 Kotlin Flow</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#setvalue%E5%92%8Cpostvalue%E7%9A%84%E5%8C%BA%E5%88%AB%E5%8F%8A%E4%BD%BF%E7%94%A8%E5%9C%BA%E6%99%AF">setValue和postValue的区别及使用场景？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88-%E8%A6%81%E5%9C%A8%E4%B8%BB%E7%BA%BF%E7%A8%8B%E4%B8%AD%E8%AE%BE%E7%BD%AE%E5%80%BClivedata%E7%9A%84%E8%A7%82%E5%AF%9F%E5%9B%9E%E8%B0%83%E5%9C%A8%E4%B8%BB%E7%BA%BF%E7%A8%8B">为什么 要在主线程中设置值/LiveData的观察回调在主线程？</a></li>
+<li><a href="#%E4%B8%BA%E4%BD%95%E7%94%A8-mpendingdata-%E8%80%8C%E9%9D%9E%E7%9B%B4%E6%8E%A5%E8%B5%8B%E5%80%BC-mdata">为何用 <code>mPendingData</code> 而非直接赋值 <code>mData</code>？</a></li>
+<li><a href="#postvalue-%E7%9A%84%E7%BA%BF%E7%A8%8B%E5%88%87%E6%8D%A2%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0">postValue() 的线程切换如何实现？</a></li>
+<li><a href="#%E5%A4%9A%E6%AC%A1%E8%B0%83%E7%94%A8%E4%BC%9A%E5%90%88%E5%B9%B6%E5%90%97">多次调用会合并吗？</a>
+<ul>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88-%E8%A6%81%E5%9C%A8%E4%B8%BB%E7%BA%BF%E7%A8%8B%E4%B8%AD%E8%AE%BE%E7%BD%AE%E5%80%BClivedata%E7%9A%84%E8%A7%82%E5%AF%9F%E5%9B%9E%E8%B0%83%E5%9C%A8%E4%B8%BB%E7%BA%BF%E7%A8%8B-2">为什么 要在主线程中设置值/LiveData的观察回调在主线程？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E8%A6%81%E7%94%A8mpendingdata%E8%80%8C%E9%9D%9E%E7%9B%B4%E6%8E%A5%E8%B5%8B%E5%80%BC-mdatawhy">为什么要用mPendingData而非直接赋值 <code>mData</code>？Why</a>
+<ul>
+<li><a href="#%E8%AE%BE%E8%AE%A1%E6%88%90%E4%BB%80%E4%B9%88%E6%A0%B7%E5%AD%90what">设计成什么样子？What</a></li>
+<li><a href="#%E5%A6%82%E4%BD%95%E6%8E%A8%E9%80%81how">如何推送？How</a></li>
+<li><a href="#%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E6%8E%A8%E9%80%81when">什么时候推送？When</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%8D%E7%9B%B4%E6%8E%A5%E4%BD%BF%E7%94%A8mdata">为什么不直接使用mData？</a></li>
+<li><a href="#%E6%96%B0%E6%95%B0%E6%8D%AE%E5%A6%82%E4%BD%95%E5%88%A4%E6%96%AD%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E6%9C%89%E6%96%B0%E6%95%B0%E6%8D%AE%E5%93%AA%E9%87%8C%E6%9C%89%E6%96%B0%E6%95%B0%E6%8D%AEwhere%E5%B1%80%E9%83%A8%E6%80%A7%E7%9A%84%E6%96%B0">新数据如何判断（什么时候有新数据）/哪里有新数据？Where（局部性的“新”）</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E7%89%88%E6%9C%AC%E5%8F%B7%E7%9A%84%E4%BD%9C%E7%94%A8">版本号的作用？</a></li>
+<li><a href="#mversion-%E7%9A%84%E5%88%9D%E5%A7%8B%E5%80%BC%E6%98%AF%E5%A4%9A%E5%B0%91">mVersion 的初始值是多少？</a></li>
+<li><a href="#dispatchingvalue-%E6%96%B9%E6%B3%95%E4%B8%AD-initiator-%E5%8F%82%E6%95%B0%E7%9A%84%E4%BD%9C%E7%94%A8">dispatchingValue() 方法中 <code>initiator</code> 参数的作用？</a></li>
+<li><a href="#%E5%85%B7%E4%BD%93%E7%9A%84%E6%95%B0%E6%8D%AE%E5%88%86%E5%8F%91%E6%B5%81%E7%A8%8B">具体的数据分发流程？</a></li>
+<li><a href="#%E5%88%86%E5%8F%91%E6%95%B0%E6%8D%AE%E6%97%B6%E6%98%AF%E5%A6%82%E4%BD%95%E4%BF%9D%E8%AF%81%E4%B8%8D%E9%87%8D%E5%A4%8D%E5%88%86%E5%8F%91">分发数据时是如何保证不重复分发？</a></li>
+<li><a href="#%E8%87%AA%E5%AE%9A%E4%B9%89livedata%E9%9C%80%E8%A6%81%E9%87%8D%E5%86%99%E5%93%AA%E4%BA%9B%E6%96%B9%E6%B3%95">自定义LiveData需要重写哪些方法？</a></li>
+<li><a href="#mediatorlivedata-%E7%9A%84%E4%BD%BF%E7%94%A8%E5%9C%BA%E6%99%AF%E5%A6%82%E4%BD%95%E5%90%88%E5%B9%B6%E5%A4%9A%E4%B8%AAlivedata">MediatorLiveData 的使用场景/如何合并多个Livedata？</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88mediatorlivedata%E5%86%85%E9%83%A8%E7%B1%BBsource%E4%B8%8Elivedata%E5%AF%B9%E7%89%88%E6%9C%AC%E5%8F%B7%E6%A3%80%E6%9F%A5%E7%9A%84%E9%80%BB%E8%BE%91%E4%B8%8D%E5%90%8C">为什么MediatorLiveData内部类Source与Livedata对版本号检查的逻辑不同？</a></li>
+<li><a href="#transformationsmap-%E5%92%8C-switchmap-%E7%9A%84%E5%8C%BA%E5%88%AB%E5%BA%95%E5%B1%82%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0">Transformations#map 和 switchMap 的区别？底层如何实现？</a>
+<ul>
+<li><a href="#%E4%BE%8B%E5%AD%90">例子</a></li>
+</ul>
+</li>
+<li><a href="#transformationsdistinctuntilchanged%E6%98%AF%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E9%98%B2%E6%8A%96%E7%9A%84">Transformations#distinctUntilChanged是如何实现防抖的？</a></li>
+<li><a href="#computablelivedata%E6%98%AF%E4%BB%80%E4%B9%88%E6%9C%89%E4%BB%80%E4%B9%88%E4%BD%9C%E7%94%A8">ComputableLiveData是什么？有什么作用？</a></li>
+<li><a href="#livedata%E5%A6%82%E4%BD%95%E4%B8%8Eviewmodel%E9%85%8D%E5%90%88%E4%B8%BA%E4%BB%80%E4%B9%88%E6%8E%A8%E8%8D%90%E5%9C%A8-viewmodel-%E4%B8%AD%E6%8C%81%E6%9C%89-livedata">LiveData如何与ViewModel配合？为什么推荐在 ViewModel 中持有 LiveData？</a></li>
+<li><a href="#%E8%A1%A5%E5%85%85">补充</a></li>
+</ul>
+</li>
+<li><a href="#%E6%80%BB%E7%BB%93%E7%BB%8F%E9%AA%8C"><strong>总结经验</strong></a></li>
+<li><a href="#%E8%AE%BE%E8%AE%A1%E5%93%B2%E5%AD%A6%E8%BF%81%E7%A7%BB"><strong>设计哲学迁移</strong></a></li>
+<li><a href="#%E5%8F%82%E8%80%83">参考</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://kanyewestforreal.github.io/post/java-multithreading-p1/">
+              <h3 class="post-title">
+                Java多线程笔记（1）
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  This blog is just for me to record the questions, which in my developing.
+  <div class="footer-right">
+    <a class="rss" href="https://kanyewestforreal.github.io//atom.xml" target="_blank">
+      <i class="ri-rss-line"></i> RSS
+    </a>
+    <span id="busuanzi_container_site_pv" style="margin-top: 8px;">
+      本站总访问量<span id="busuanzi_value_site_pv"></span>次
+    </span>
+  </div>
+  <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      // hljs.initHighlightingOnLoad()
+
+      // let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // // This should probably be throttled.
+      // // Especially because it triggers during smooth scrolling.
+      // // https://lodash.com/docs/4.17.10#throttle
+      // // You could do like...
+      // // window.addEventListener("scroll", () => {
+      // //    _.throttle(doThatStuff, 100);
+      // // });
+      // // Only not doing it here to keep this Pen dependency-free.
+
+      // window.addEventListener("scroll", event => {
+      //   let fromTop = window.scrollY;
+
+      //   mainNavLinks.forEach((link, index) => {
+      //     let section = document.getElementById(decodeURI(link.hash).substring(1));
+      //     let nextSection = null
+      //     if (mainNavLinks[index + 1]) {
+      //       nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+      //     }
+      //     if (section.offsetTop <= fromTop) {
+      //       if (nextSection) {
+      //         if (nextSection.offsetTop > fromTop) {
+      //           link.classList.add("current");
+      //         } else {
+      //           link.classList.remove("current");    
+      //         }
+      //       } else {
+      //         link.classList.add("current");
+      //       }
+      //     } else {
+      //       link.classList.remove("current");
+      //     }
+      //   });
+      // });
+
+    </script>
+  </body>
+</html>

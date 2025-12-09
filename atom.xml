@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <id>https://kanyewestforreal.github.io/</id>
+    <title>Grinofith&apos;s Blog</title>
+    <updated>2025-12-09T10:23:26.863Z</updated>
+    <generator>https://github.com/jpmonette/feed</generator>
+    <link rel="alternate" href="https://kanyewestforreal.github.io/"/>
+    <link rel="self" href="https://kanyewestforreal.github.io/atom.xml"/>
+    <subtitle>The key is seriously reflecting.</subtitle>
+    <logo>https://kanyewestforreal.github.io/images/avatar.png</logo>
+    <icon>https://kanyewestforreal.github.io/favicon.ico</icon>
+    <rights>All rights reserved 2025, Grinofith&apos;s Blog</rights>
+    <entry>
+        <title type="html"><![CDATA[JVM 笔记]]></title>
+        <id>https://kanyewestforreal.github.io/post/jvm-bi-ji/</id>
+        <link href="https://kanyewestforreal.github.io/post/jvm-bi-ji/">
+        </link>
+        <updated>2025-12-08T11:30:17.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Java多线程笔记（4）]]></title>
+        <id>https://kanyewestforreal.github.io/post/java-multithreading-p4/</id>
+        <link href="https://kanyewestforreal.github.io/post/java-multithreading-p4/">
+        </link>
+        <updated>2025-11-23T15:34:18.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Java多线程笔记（3）]]></title>
+        <id>https://kanyewestforreal.github.io/post/java-multithreading-p3/</id>
+        <link href="https://kanyewestforreal.github.io/post/java-multithreading-p3/">
+        </link>
+        <updated>2025-11-06T12:35:34.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Java多线程笔记（2）]]></title>
+        <id>https://kanyewestforreal.github.io/post/java-multithreading-p2/</id>
+        <link href="https://kanyewestforreal.github.io/post/java-multithreading-p2/">
+        </link>
+        <updated>2025-10-07T12:16:57.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Android Jetpack(4)  ViewModel源码阅读记录]]></title>
+        <id>https://kanyewestforreal.github.io/post/android-jetpack4-viewmodel/</id>
+        <link href="https://kanyewestforreal.github.io/post/android-jetpack4-viewmodel/">
+        </link>
+        <updated>2025-03-25T10:51:33.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Android Jetpack(3)  SaveStateHandle源码阅读记录]]></title>
+        <id>https://kanyewestforreal.github.io/post/android-jetpack3-savedstatehandle/</id>
+        <link href="https://kanyewestforreal.github.io/post/android-jetpack3-savedstatehandle/">
+        </link>
+        <updated>2025-03-24T11:09:35.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Android Jetpack(2) Livedata源码阅读记录]]></title>
+        <id>https://kanyewestforreal.github.io/post/android-jetpack2-livedata/</id>
+        <link href="https://kanyewestforreal.github.io/post/android-jetpack2-livedata/">
+        </link>
+        <updated>2025-03-16T07:34:01.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Java多线程笔记（1）]]></title>
+        <id>https://kanyewestforreal.github.io/post/java-multithreading-p1/</id>
+        <link href="https://kanyewestforreal.github.io/post/java-multithreading-p1/">
+        </link>
+        <updated>2025-03-12T11:46:36.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Android Jetpack(1) Lifecycle源码阅读记录]]></title>
+        <id>https://kanyewestforreal.github.io/post/android-jetpack1-lifecycle/</id>
+        <link href="https://kanyewestforreal.github.io/post/android-jetpack1-lifecycle/">
+        </link>
+        <updated>2025-03-03T08:29:31.000Z</updated>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[HashMap番外篇——SafeIterableMap 重点]]></title>
+        <id>https://kanyewestforreal.github.io/post/hashmap-safeiterablemap-knowledge/</id>
+        <link href="https://kanyewestforreal.github.io/post/hashmap-safeiterablemap-knowledge/">
+        </link>
+        <updated>2025-02-26T07:29:46.000Z</updated>
+    </entry>
+</feed>

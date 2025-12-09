@@ -1,0 +1,2996 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Java多线程笔记（1） | Grinofith&#39;s Blog</title>
+<link rel="shortcut icon" href="https://kanyewestforreal.github.io//favicon.ico?v=1765275803375">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://kanyewestforreal.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Java多线程笔记（1） | Grinofith&#39;s Blog - Atom Feed" href="https://kanyewestforreal.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="Java内存模型、重要关键字、计算机组成基础
+背景
+
+为什么需要多线程/多核CPU
+计算机系统中有很多速度慢得多的部件（如内存、硬盘、网络）。当一个线程在等待从硬盘读取数据时（这是一个非常慢的操作），单核CPU就会空闲。而在多核/多线程环境..." />
+    <meta name="keywords" content="Java" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <!-- <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script> -->
+    <script src="//cdn.jsdelivr.net/npm/leancloud-storage@4.13.2/dist/av-min.js"></script>
+    <script src="/media/js/read_mark.js"></script>
+    <script src="/media/js/highlight/highlight.min.js"></script>
+    <script src="/media/js/sroll_markdown_titile_list.js"></script>
+    <link rel="stylesheet" type="text/css" href="/media/js/highlight/styles/atom-one-dark.css">
+    <script>hljs.highlightAll();</script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://kanyewestforreal.github.io/">
+  <img class="avatar" src="https://kanyewestforreal.github.io//images/avatar.png?v=1765275803375" alt="">
+  </a>
+  <h1 class="site-title">
+    Grinofith&#39;s Blog
+  </h1>
+  <p class="site-description">
+    The key is seriously reflecting.
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Java多线程笔记（1）
+            </h2>
+            <div class="post-info">
+              <span>
+                2025-03-12
+              </span>
+              <span class="post-views">
+                  <span >阅读量：</span>
+                  <span id="dynamic-views-counter"></span>
+              </span>
+              <span>
+                116 min read
+              </span>
+              
+                <a href="https://kanyewestforreal.github.io/tag/java/" class="post-tag">
+                  # Java
+                </a>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://kanyewestforreal.github.io//post-images/java-multithreading-p1.jpg" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>Java内存模型、重要关键字、计算机组成基础</p>
+<h1 id="背景">背景</h1>
+<hr>
+<h2 id="为什么需要多线程多核cpu">为什么需要多线程/多核CPU</h2>
+<p>计算机系统中有很多速度慢得多的部件（如内存、硬盘、网络）。当一个线程在等待从硬盘读取数据时（这是一个非常慢的操作），单核CPU就会空闲。而在多核/多线程环境下，操作系统可以立即让另一个线程在那个空闲的核心上运行，从而让CPU始终保持忙碌，大大提高了整体资源的利用率。</p>
+<h2 id="多核cpu的协作方式">多核CPU的协作方式</h2>
+<p>在 CPU 执行程序时，每条指令都在处理器上运行；指令执行往往需要读写数据。程序运行时的大量临时数据存放在主内存（物理内存）中，但主存的访问速度远慢于 CPU 的执行速度。</p>
+<p>如果处理器每次对数据的操作都直接访问主存，程序会非常慢。为了解决这个性能差距，现代处理器在每个核心里都配有多级高速缓存（典型的有 L1、L2、L3 等），用于保存主存数据的本地副本，从而加快读写。</p>
+<h3 id="高速缓存带来的问题">高速缓存带来的问题</h3>
+<p>举个简单例子：语句 <code>i = i + 1;</code> 在单线程下看起来没有问题。</p>
+<p>但在多线程/多核环境中，每个核心都有自己的缓存副本，可能发生下面的情况：两个线程同时读取主存中 i 的值（每个线程在自己核心的缓存里有一份），线程 A 在本地加 1 并把结果写回主存；线程 B 仍然基于自己缓存中的旧值加 1，然后写回主存，导致最终主存中 i 的值只加了 1 而不是 2。这个现象就是缓存一致性问题 —— 当同一内存位置在多个缓存中都有副本时，如何保证这些副本在并发访问下仍然一致。</p>
+<p>为了解决缓存不一致问题，硬件通常提供两类机制：</p>
+<ol>
+<li>早期、简单的做法是用总线锁（bus lock，例如 x86 的 LOCK# 信号）让其他处理器在某段操作期间无法访问内存，从而保证原子性。但这种方法会阻塞总线上的所有事务，效率很低。现代处理器在大多数常见情况下并不通过长期锁住总线来实现原子性；总线锁仍可能在某些特殊情形（例如对不可缓存内存的访问、非常老的硬件模式或跨 NUMA/IO 区域）下被使用。</li>
+<li>更普遍、更高效的方式是由<strong>硬件实现的缓存一致性协议</strong>（cache coherence protocol），它定义了各缓存控制器之间如何协同维护同一缓存行的状态与更新，从而保证多个私有缓存与共享主内存之间数据副本的一致性。常见设计思路包括基于“总线嗅探”（snooping）的协议和基于“目录”（directory-based）的协议：
+<ul>
+<li>在较小规模的多核芯片（核心数不太大且共享总线或环形互连）上，缓存控制器常用<strong>嗅探（snooping）</strong>：每个缓存控制器监听总线或片上互连上的读/写请求，并根据请求调整自己缓存行的状态或响应数据。</li>
+<li>在大规模或多插槽/多节点系统中，为了减少广播，常用<strong>目录协议</strong>，由目录记录哪些节点缓存了哪条缓存行，缓存一致性请求通过目录来转发/协调。</li>
+</ul>
+</li>
+</ol>
+<p><strong>MESI（及变种）：一个常见的嗅探型协议</strong></p>
+<p>在很多 x86 平台上（以及许多其他架构厂商的实现中）使用的一类协议就是 MESI 或其变体，MESI 把每个缓存行的状态限制为四种之一：</p>
+<ul>
+<li><strong>M (Modified)</strong>：缓存行被本缓存修改，主存是过时的；该缓存拥有该行的唯一有效副本。</li>
+<li><strong>E (Exclusive)</strong>：缓存行在本缓存中为独占且未被修改（与主存一致）。</li>
+<li><strong>S (Shared)</strong>：缓存行与其他缓存共享，且与主存一致。</li>
+<li><strong>I (Invalid)</strong>：缓存行无效，不能直接使用。</li>
+</ul>
+<p>基于 MESI 的基本交互（用更贴近实现的术语描述）通常包括：</p>
+<ul>
+<li>当核心需要读取某个缓存行但本地为 <code>I</code>，会发起一个读请求（BusRd/类似事务）。如果其他核心有 <code>M</code> 或 <code>E</code> 状态的副本，它们会把数据放到总线／响应者，从而使请求者得到数据；响应者在必要时把自己的状态降级为 <code>S</code>。如果没有其他有效副本，数据就要从主存取回，请求者将该行置为 <code>S</code>（或 <code>E</code>，取决于实现和是否探测到共享）。</li>
+<li>当核心要写某缓存行而本地没有写权限（例如本地是 <code>S</code> 或 <code>I</code>），它会发起一个获取独占/升级的事务（如 BusRdX / Upgrade / BusUpgr 等，不同实现名词有差别）。该事务会使其他缓存中对应行变为 <code>I</code>（即发送无效化），请求核心在收集足够的无效确认之后才获得独占写权并把本行置为 <code>M</code>，然后执行写入。</li>
+<li>当核心已经以 <code>S</code> 状态持有某行但想改写时，通常可以发起一次“升级（Upgrade/Upgr）”请求，这样无需重读数据，只需使其他副本无效，然后把本行变为 <code>M</code> 再写入。</li>
+</ul>
+<p>注意：不同厂商对 MESI 有扩展或变体，但总体思想是一致的：通过有限的状态，协调副本的一致性。</p>
+<p>x86 与 ARM</p>
+<ul>
+<li><strong>x86 系列（Intel/AMD）</strong>：传统上在多核 x86 处理器上常见的是基于嗅探的 MESI 类协议（各厂商在实现上有细微扩展，如 MESIF、MOESI 等优化），并且在实现层面会尽可能利用缓存一致性来实现原子操作（例如 <strong>LOCK 前缀指令通常会走缓存一致性协议获得缓存行的独占权限，而不是总是锁总线</strong>）。在多插槽 / 多节点系统或特殊情形下，仍可能使用更重的机器级手段或额外的互斥机制。x86 的内存模型相对较强（强序），这也影响多线程程序的可见性与同步语义。</li>
+<li><strong>ARM（包括 ARMv7/ARMv8 等）</strong>：ARM 平台也采用类似的缓存一致性协议（可看作 MESI 或 MESI-like）的机制来维护缓存行一致性；不过实际实现细节因芯片厂商与平台而异。ARM 架构的内存模型总体上比 x86 弱一些（即对操作重排序的允许度更大），因此在编写并发程序或内核同步代码时，程序员或编译器需要显式使用内存栅栏（例如 DMB/DSB 在 ARM 上）来获得必要的可见性与顺序保证。除此之外，ARM 在大规模系统上也会采用目录式协议或其他互连机制来扩展一致性。</li>
+</ul>
+<h1 id="jmm的介绍">JMM的介绍</h1>
+<p>Java 内存模型（Java Memory Model，JMM）定义了 Java 程序中的<strong>变量、线程，如何与主内存、工作内存进行交互的规则</strong>。它主要涉及到多线程环境下的共享变量可见性、指令重排等问题，是理解并发编程中的关键概念。</p>
+<p>并发编程中比较关键的两个问题就是同步、互斥：</p>
+<p>同步，意味着线程之间要密切合作，按照一定的顺序来执行任务。比如说，线程 A 先执行，线程 B 再执行。</p>
+<p>互斥，意味着线程之间要抢占资源，同一时间只能有一个线程访问共享资源。比如说，线程 A 在访问共享资源时，线程 B 不能访问。</p>
+<p>同步关注的是线程之间的协作，互斥关注的是线程之间的竞争。</p>
+<p>tips1：</p>
+<p>在JVM的内存模型中，对于每一个线程来说，栈都是私有的，而堆是共有的。</p>
+<p>当<strong>一个对象被创建</strong>时，它的所有<strong>非静态成员变量</strong>（包括<code>volatile</code>变量）都随着对象本身一起存储在<strong>堆（Heap）</strong> 内存中。</p>
+<p>也就是说，在栈中的变量（局部变量、方法定义的参数、异常处理的参数）不会在线程之间共享，也就不会有内存可见性的问题，也不受内存模型的影响。<strong>被多个线程共同访问和操作的非静态成员变量</strong>称为共享变量。</p>
+<p>所以，可见性主要针对的是<strong>共享变量</strong>。这些共享变量，正如背景所言，会被放入CPU的高速缓存当中，所以也就引发了多线程的核心问题。</p>
+<p>tips2:</p>
+<p>计算机在执行程序时，为了提高性能，编译器和处理器常常会对指令做重排。</p>
+<p><strong>为什么指令重排序可以提高性能？</strong></p>
+<p>指令重排是减少流水线“停顿”（尤其是由数据/内存延迟引起的）的一种重要技术。</p>
+<blockquote>
+<p><em>流水线</em>（pipeline）技术是指在程序执行时，把多条指令进行重叠操作的并行处理的技术。</p>
+</blockquote>
+<p>原始顺序：</p>
+<pre><code class="language-cpp">r1 = LOAD x      // 高延迟
+r2 = r1 + 1
+r3 = LOAD y      // 要等 r2 吗？看代码顺序是后发起的
+r4 = r3 + 2
+</code></pre>
+<p>重排后：</p>
+<pre><code class="language-cpp">r1 = LOAD x
+r3 = LOAD y      // 提前发起 load y，与 load x 并行等待
+r2 = r1 + 1
+r4 = r3 + 2
+</code></pre>
+<p>结果：两次内存加载的等待可以部分重叠，算术指令在数据到达后能立即执行，流水线空闲周期减少 → 吞吐率提高。</p>
+<h1 id="多线程的两大核心问题">多线程的两大核心问题</h1>
+<h2 id="如何保障共享数据一致性">如何保障共享数据一致性？</h2>
+<p>包含三个子问题：<strong>原子性（atomicity）</strong>、<strong>可见性（visibility）</strong>、<strong>有序性（ordering）</strong>。</p>
+<p>常见错误：竞态条件（race）、ABA 问题、内存重排导致的不可见更新等。</p>
+<p>常用手段：原子操作（CAS/atomic classes）、互斥（<code>synchronized</code>/<code>Lock</code>）、<code>volatile</code>、不可变对象、线程安全集合。</p>
+<h2 id="线程之间如何通信协作">线程之间如何通信协作？</h2>
+<p>常用手段：通知/等待（<code>wait</code>/<code>notify</code>、<code>Condition</code>）、信号量（semaphore）、屏障（barrier）、队列/管道（blocking queue）、消息传递（actor/model）。</p>
+<p>目的：在正确的时间顺序上交换数据或控制权，减少忙等（busy-wait）并提高并发度。</p>
+<p>tips：</p>
+<p>活跃性问题，常常也被忽略但是十分重要。</p>
+<p>常见错误：死锁（deadlock）、活锁（livelock）、饿死（starvation）、优先级反转（priority inversion）。</p>
+<h1 id="保障共享数据一致性的三大要求">保障共享数据一致性的三大要求</h1>
+<p>多线程在工作时，如果需要对共享数据进行操作，那么往往需要原子性、可见性、有序性的实现（不一定三个特性都要），以此保证共享数据的一致性，执行流的正确性。</p>
+<ol>
+<li>
+<p><strong>原子性</strong>（<strong>竞态条件</strong>）：多个线程同时修改共享数据时，结果可能是不可预测的。我们期望的是一个操作或者多个操作，要么全部执行并且执行的过程不会被任何因素打断，要么就都不执行。</p>
+<pre><code class="language-java">x = 10;   //语句1
+y = x;    //语句2
+x++;      //语句3
+x = x + 1;   //语句4
+//其实只有语句1是原子性操作，其他三个语句都不是原子性操作。
+//语句1是直接将数值10赋值给x，也就是说线程执行这个语句的会直接将数值10写入到工作内存中。
+//语句2实际上包含2个操作，它先要去读取x的值，再将x的值写入工作内存，虽然读取x的值以及 将x的值写入工作内存 这2个操作都是原子性操作，但是合起来就不是原子性操作了。
+//同样的，x++和 x = x+1包括3个操作：读取x的值，进行加1操作，写入新的值。
+//所以上面4个语句只有语句1的操作具备原子性。
+//也就是说，只有简单的读取、赋值（而且必须是将数字赋值给某个变量，变量之间的相互赋值不是原子操作）才是原子操作。
+</code></pre>
+</li>
+<li>
+<p><strong>可见性</strong>（<strong>数据竞争</strong>）：一个线程修改数据后，其他线程可能无法立即看到最新值。我们期望的是多个线程访问同一个变量时，一个线程修改了这个变量的值，其他线程能够立即看得到修改的值。<br>
+（如后台线程修改数据后，主线程读取旧值）</p>
+<pre><code class="language-java">//线程1执行的代码
+int i = 0;
+i = 10;
+ 
+//线程2执行的代码
+j = i;
+//假若执行线程1的是CPU1，执行线程2的是CPU2。由上面的分析可知，当线程1执行 i =10这句时，会先把i的初始值加载到CPU1的高速缓存中，然后赋值为10，那么在CPU1的高速缓存当中i的值变为10了，却没有立即写入到主存当中。
+//此时线程2执行 j = i，它会先去主存读取i的值并加载到CPU2的缓存当中，注意此时内存当中i的值还是0，那么就会使得j的值为0，而不是10.
+//这就是可见性问题，线程1对变量i修改了之后，线程2没有立即看到线程1修改的值。
+</code></pre>
+</li>
+<li>
+<p><strong>有序性</strong>：代码编写顺序，与实际上的代码执行顺序常常不一致。如果多线程之间依赖某一共享数据进行执行，可能导致不可预期的错误（由CPU/编译器优化，重排序导致）。我们期望的是所见即所得，代码执行顺序与代码编写顺序尽可能一致。</p>
+<pre><code class="language-java">//线程1:
+context = loadContext();  //语句1
+inited = true;       //语句2
+//线程2:
+while(!inited){
+ 	sleep()
+}
+doSomethingwithconfig(context);
+//上面代码中，由于语句1和语句2没有数据依赖性，因此可能会被重排序。
+//假如发生了重排序，在线程1执行过程中先执行语句2，而此是线程2会以为初始化工作已经完成，那么就会跳出while循环，去执行doSomethingwithconfig(context)方法，而此时context并没有被初始化，就会导致程序出错。
+//从上面可以看出，指令重排序不会影响单个线程的执行，但是会影响到线程并发执行的正确性。
+</code></pre>
+</li>
+</ol>
+<h1 id="happens-before先行发生原则">Happens-Before（先行发生）原则</h1>
+<p>Happens-Before（先行发生）原则是对 **Java 内存模型（JMM）**中所规定的可见性的更高级的语言层面的描述。</p>
+<p>可以用这个原则<strong>解决并发环境下两个操作之间的可见性问题</strong>。</p>
+<p>如果两个操作的执行次序无法从happens-before原则推导出来，那么它们就不能保证它们的有序性，虚拟机可以随意地对它们进行重排序。</p>
+<h2 id="定义">定义</h2>
+<h3 id="程序次序规则">程序次序规则</h3>
+<p>同一个线程内，按程序顺序执行的操作 A 在语义上  先行发生于 后面的操作 B。</p>
+<h3 id="锁规则">锁规则</h3>
+<p>一个 unlock 操作 先行发生于 后面对同一个锁的 lock 操作。（注意：不止针对<code>synchronized</code>、也对<code>lock</code>接口相关的生效）</p>
+<blockquote>
+<p>All Lock implementations must enforce the same memory synchronization semantics as provided by the built-in monitor lock, as described in section 17.4 of The Java™ Language Specification:</p>
+<p>A successful lock operation has the same memory synchronization effects as a successful Lock action.</p>
+<p>A successful unlock operation has the same memory synchronization effects as a successful Unlock action.</p>
+</blockquote>
+<h3 id="volatile-变量规则">volatile 变量规则</h3>
+<p>对一个 volatile 变量的写操作 先行发生于 后面对这个volatile变量的读操作。</p>
+<h3 id="线程启动规则">线程启动规则</h3>
+<p>Thread start()方法 先行发生于 此线程的每一个动作。</p>
+<h3 id="线程终止规则">线程终止规则</h3>
+<p>线程中的所有操作都先行发生于对此线程的终止检测。</p>
+<p>可以通过 <code>Thread.join()</code>方法和 <code>Thread.isAlive()</code>的返回值等手段检测线程是否已经终止执行。</p>
+<h3 id="线程中断规则">线程中断规则</h3>
+<p>对线程 interrupt()方法的调用 先行发生于 被中断线程的检测中断的代码。</p>
+<p>可以通过 <code>Thread.interrupted()</code>方法检测到是否有中断发生。</p>
+<h3 id="对象终结规则">对象终结规则</h3>
+<p>一个对象的初始化完成（构造函数结束）先行发生于它的 finalize()方法的开始。</p>
+<h3 id="传递性">传递性</h3>
+<p>如果操作 A 先行发生于 操作 B，操作 B 先行发生于 操作 C，那就可以得出操作 A 先行发生于操作 C 的结论。如果前七条都不成立，那么这一条没有使用价值。</p>
+<h2 id="注意">注意</h2>
+<ul>
+<li>Happens-before 关系保证正确同步的多线程程序的执行结果不被改变。</li>
+<li>Happens-before 关系给编写正确同步的多线程程序的程序员创造了一个<strong>幻境</strong>：正确同步的多线程程序是按 Happens-before 指定的顺序来执行的。实际上，CPU/编译器仍然可以对执行顺序进行重排，只要依赖关系不发生冲突。</li>
+</ul>
+<h1 id="内存屏障">内存屏障</h1>
+<h2 id="前言">前言</h2>
+<p>MESI协议本身是完美的，但在实践中遇到了<strong>性能瓶颈</strong>。我们的两位主角<code>Store Buffer</code>、<code>Invalidate Queue</code>就是为了解决这些瓶颈而登场的。</p>
+<h3 id="瓶颈一写操作太慢">瓶颈一：写操作太慢</h3>
+<p><strong>场景</strong>：核心A想修改一个处于<code>S</code>状态（共享状态）的缓存行。<br>
+<strong>MESI流程</strong>：</p>
+<ol>
+<li>核心A必须先给所有其他核心发送一个 <strong>“无效化（Invalidate）”</strong> 消息。</li>
+<li>然后<strong>等待</strong>所有其他核心回复 <strong>“确认（Acknowledge）”</strong> 消息，表示它们已将自己的副本置为无效（<code>I</code>）。</li>
+<li>核心A阻塞等待，收到所有确认后，核心A才能将它的缓存行状态改为<code>E</code>或<code>M</code>，然后才能执行写入。</li>
+</ol>
+<p><strong>问题</strong>：这个“等待所有确认”的过程非常漫长（在CPU时钟周期尺度上看）！核心A啥也干不了，就在那傻等，浪费宝贵的计算资源。</p>
+<p><strong>解决方案：Store Buffer (存储缓冲区)</strong></p>
+<ul>
+<li>
+<p><strong>是什么</strong>：在每个CPU核心和它的缓存之间加的一个非常小的、高速的缓冲区。</p>
+</li>
+<li>
+<p><strong>怎么做</strong>：</p>
+<ol>
+<li>
+<p>当核心A要执行一个写操作时，它不再傻等，而是直接把<strong>要写入的数据和地址</strong>扔进自己的<code>Store Buffer</code>。同时，发送无效化消息。</p>
+</li>
+<li>
+<p>不阻塞等待其他核心回复<code>InvAck</code>，核心A<strong>继续执行后面的指令</strong>。</p>
+</li>
+<li>
+<p>当其他核心都回复了<code>InvAck</code>后，存储在Store Buffer里的数据才会被<strong>真正地</strong>写回到核心A自己的缓存行中。</p>
+</li>
+</ol>
+</li>
+</ul>
+<p><strong>好处</strong>：核心不用阻塞，极大地提升了效率。</p>
+<p><strong>副作用</strong>：</p>
+<p>Store Buffer的引入带来了一个新的问题：导致了<strong>指令重排序</strong>和<strong>内存可见性问题</strong>。</p>
+<p>考虑以下代码序列（在两个线程上执行）：</p>
+<pre><code class="language-java">// Core 0执行
+X = 10; 
+Y = 1; 
+
+// Core 1执行         
+while (Y == 0) { /* spin */ }             
+print(X);
+</code></pre>
+<p>假设初始状态 <code>X=0, Y=0</code>。</p>
+<ul>
+<li>从Core 0的视角看，它先写 <code>X</code>，后写 <code>Y</code>。</li>
+<li>但从Core 1的视角看，由于Store Buffer的存在，Core 0的写入顺序可能“乱序”：
+<ol>
+<li>Core 0将 <code>X=10</code> 放入Store Buffer，并发送<code>BusRdX</code>。</li>
+<li>Core 0继续执行，将 <code>Y=1</code> 也放入<code>Store Buffer</code>。</li>
+<li>由于某些原因（比如总线繁忙、Y所在的缓存行是E状态），<strong>获取 <code>Y</code> 独占权的先完成了</strong>。于是 <code>Y=1</code> 先从Store Buffer提交到了Core 0的L1缓存。</li>
+<li>Core 1一直在监听总线，它看到了 <code>Y</code> 被Core 0修改的消息，于是将自己的 <code>Y</code> 缓存行无效化（I状态），然后从Core 0的L1缓存中读取到 <code>Y=1</code>。</li>
+<li>Core 1跳出循环，去读取 <code>X</code>。但此时，Core 0的 <code>X=10</code> 可能还在Store Buffer里，尚未提交到L1缓存！所以Core 1读到的 <code>X</code> 可能还是旧的初始值 <code>0</code>。</li>
+</ol>
+</li>
+</ul>
+<p>这就导致了违反直觉的结果：Core 1打印出了 <code>X=0</code>，尽管按照代码顺序 <code>X=10</code> 发生在 <code>Y=1</code> 之前。</p>
+<h3 id="瓶颈二无效化确认太慢">瓶颈二：无效化确认太慢</h3>
+<p><strong>场景</strong>：Core 1收到了Core 0发来的“无效化”消息。<br>
+<strong>问题</strong>：如果Core 1正在处理其他事情，或者无效化消息很多，它可能无法立即处理这个无效化请求并回复确认。这会拖慢Core 0（虽然Core 0有Store Buffer，但最终还是要等<code>InvAck</code>确认后，才能写入缓存）。</p>
+<p><strong>解决方案：Invalidate Queue (无效化队列)</strong></p>
+<ul>
+<li>
+<p><strong>是什么</strong>：在每个CPU核心的缓存之前加的一个小队列。</p>
+</li>
+<li>
+<p><strong>怎么做</strong>：</p>
+<ol>
+<li>当Core 1收到一个“无效化”消息时，它看都不看，直接回复 <strong>“确认”</strong>。</li>
+<li>然后把这个“无效化”请求扔到自己的Invalidate Queue里排队，等自己有空了再慢慢处理（即真正地把本地对应的缓存行置为<code>I</code>状态）。</li>
+</ol>
+</li>
+</ul>
+<p><strong>好处</strong>：极大加快了确认响应速度，让请求方（Core 0）能更快地完成操作。</p>
+<p><strong>副作用</strong>：</p>
+<p>它加剧了<strong>内存可见性问题</strong>。</p>
+<p><strong>例子</strong>：</p>
+<pre><code class="language-java">// Core 0执行
+X = 10; 
+Y = 1; 
+
+// Core 1执行         
+while (Y == 0) { /* spin */ }             
+print(X);
+</code></pre>
+<p>Core 1在<code>while (Y == 0);</code>循环时，可能早就收到了Core 0发来的针对<code>Y</code>的无效化消息，并迅速回复了确认。但这个消息还在Core 1的Invalidate Queue里躺着没处理！</p>
+<p>所以当Core 1跳出循环去读<code>X</code>时，它看到的自己缓存里那个<code>X=0</code>的副本<strong>还是S状态（它自以为有效的）</strong>，于是直接使用了这个旧值，完全忽略了它已经被Core 0失效的事实。</p>
+<p>Store Buffer和Invalidate Queue是伟大的性能优化，但它们破坏了程序的顺序性和可见性，导致了一些反直觉的结果。这对于编写底层系统代码、并发代码的程序员来说是灾难性的。</p>
+<h3 id="总结">总结</h3>
+<p>因此，CPU提供了<strong>内存屏障</strong>指令，让程序员有能力告诉CPU：“这里需要强一致性”。</p>
+<h4 id="写屏障">写屏障</h4>
+<p><strong>相当于对Store Buffer的操作</strong>。</p>
+<ul>
+<li>作用：一条写屏障指令之后的写操作，必须等到该屏障之前的所有写操作都<strong>从Store Buffer写到缓存</strong>之后，才能开始执行。</li>
+<li>解决上面的问题：在<code>X=10;</code>和<code>Y=1;</code>之间插入写屏障，能保证<code>X=10</code>肯定已经写入缓存（等待<code>InvAck</code>，才能使其他副本失效）后，<code>Y=1</code>才会被执行和可见。<strong>确保其他Core能够拿到最新值</strong>。（如果没有写屏障flush Store Buffer，那么在读屏障之后就算去读缓存行，发现值没变，那数据还是不一致，没拿到另一个Core应该写入的数据）</li>
+</ul>
+<h4 id="读屏障">读屏障</h4>
+<p><strong>相当于对Invalidate Queue的操作</strong>。</p>
+<ul>
+<li>作用：一条读屏障指令之后的读操作，必须等到该屏障之前的所有<strong>Invalidate Queue中的消息都处理完</strong>之后，才能开始执行。</li>
+<li>解决上面的问题：在Core 0的<code>while (Y == 0);</code>循环之后、<code>print(X)</code>之前插入读屏障，能保证在读取<code>X</code>之前，先把Invalidate Queue里关于<code>X</code>的无效化请求处理掉，从而<strong>确保自己读到的是最新的<code>X</code>值</strong>。（如果没有读屏障，那么写屏障之后，另外一个Core没有处理<code>Invalidate Queue</code>，写不了缓存，副本不会失效，那读到的数据还是旧的）</li>
+</ul>
+<p><strong>高级语言中的体现</strong>：你在Java中使用的 <code>volatile</code> 关键字，或者在C++中使用的 <code>std::atomic</code>，其底层实现最终都会在编译后的指令中插入合适的内存屏障，来保证操作的原子性和可见性。</p>
+<p><strong>内存屏障</strong>（英语：Memory barrier），也称<strong>内存栅栏</strong>，是一类<a href="https://zh.wikipedia.org/wiki/%E5%90%8C%E6%AD%A5%E5%B1%8F%E9%9A%9C">同步屏障</a>指令，它使得 <strong>CPU 或编译器</strong>在对内存进行操作的时候, 严格按照一定的顺序来执行, 也就是说在内存屏障之前的指令和之后的指令不会由于系统优化等原因而导致乱序。大多数现代计算机为了提高性能而采取乱序执行，这使得内存屏障成为必须。</p>
+<p>为了性能优化，JMM 在不改变结果的前提下，会允许编译器和处理器对指令序列进行重排序。JMM 提供了内存屏障阻止这种重排序。</p>
+<p><strong>不同硬件实现内存屏障的方式不同，Java内存模型（JMM）屏蔽了这种底层硬件平台的差异，由JVM来为不同的平台生成相应的机器码</strong>。</p>
+<p>所以内存屏障分为两个层面：</p>
+<ul>
+<li><strong>硬件层面的内存屏障</strong></li>
+<li><strong>JVM层面的内存屏障</strong></li>
+</ul>
+<h3 id="补充">补充</h3>
+<p>如果一个写操作还停留在 <strong>该核的 store buffer</strong> 里、还没“写回”到缓存行（或还没被其它核看到），那么：</p>
+<ul>
+<li><strong>同一线程/同一核的后续读</strong> 有可能直接从 <strong>store buffer</strong> 得到新值（称为 store-to-load forwarding）；</li>
+<li><strong>同一线程的寄存器</strong> 只有在编译器/优化把值保存在寄存器里的情况下才会被读到（那是编译器层面的优化，不是硬件自动把内存值放寄存器）；</li>
+<li><strong>其它核的读</strong> 看不到 store buffer 中的值，只有等写被提交到缓存层并通过缓存一致性协议广播后其它核才能看到新值；否则它们会从自己的缓存（L1/L2）或从内存总线上取得旧值。</li>
+</ul>
+<h2 id="硬件层面的内存屏障">硬件层面的内存屏障</h2>
+<ol>
+<li>Load（读）屏障：确保屏障之前的读操作 先于 屏障之后的读操作完成。</li>
+<li>Store（写）屏障：确保屏障之前的写操作 先于 屏障之后的写操作完成。</li>
+<li>Full（全）屏障：同时具有Load屏障和Store屏障的功能，确保屏障之前的<strong>读写操作</strong> 先于 屏障之后的<strong>读写操作</strong>完成。</li>
+</ol>
+<p>不同硬件通过<strong>不同的指令</strong>实现这三种屏障。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">Intel x86架构指令</th>
+<th style="text-align:left">等效其他架构指令(ARM)</th>
+<th style="text-align:left">含义</th>
+<th style="text-align:left">解决的问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong><code>LFENCE</code></strong> (Load Fence)</td>
+<td style="text-align:left"><code>DMB LD</code></td>
+<td style="text-align:left"><strong>LoadLoad</strong> 屏障</td>
+<td style="text-align:left">确保屏障之前的读操作 先于 屏障之后的读操作完成。较少见，用于特殊场景（如序列化指令）。</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong><code>SFENCE</code></strong> (Store Fence)</td>
+<td style="text-align:left"><code>DMB ST</code></td>
+<td style="text-align:left"><strong>StoreStore</strong> 屏障</td>
+<td style="text-align:left">确保屏障之前的写操作 先于 屏障之后的写操作完成。即刷新Store Buffer。</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong><code>MFENCE</code></strong> (Full Fence)</td>
+<td style="text-align:left"><code>DMB SY/ALL</code></td>
+<td style="text-align:left"><strong>全能型屏障</strong></td>
+<td style="text-align:left">确保屏障之前的<strong>读写操作</strong> 先于 屏障之后的<strong>读写操作</strong>完成。它会刷新当前处理器的Store Buffer到其缓存，并处理Invalidate Queue内的消息</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong><code>LOCK</code> 指令前缀</strong></td>
+<td style="text-align:left">-</td>
+<td style="text-align:left"><strong>原子操作 + 隐式屏障</strong></td>
+<td style="text-align:left">x86的<code>LOCK</code>前缀修饰的指令（如<code>CMPXCHG</code>）不仅保证原子性，还隐含了一个<code>MFENCE</code>级别的全屏障效果。</td>
+</tr>
+</tbody>
+</table>
+<p><strong>重要提示</strong>：x86架构是<strong>强内存模型</strong>（TSO, Total Store Order），其本身已经保证了<code>StoreLoad</code>之外的其他顺序（比如不会对<code>StoreStore</code>重排序）。因此，在x86上，<code>SFENCE</code>和<code>LFENCE</code>指令在很多场景下是“无操作”（No-op），而<code>MFENCE</code>或<code>LOCK</code>指令才是关键。但在<strong>弱内存模型</strong>（如ARM、PowerPC）上，所有类型的屏障都可能需要显式使用，开销也更大。</p>
+<h2 id="jvm层面的内存屏障">JVM层面的内存屏障</h2>
+<p>JVM层面的内存屏障实现<strong>禁止指令重排序</strong>有四种指令：</p>
+<ul>
+<li><strong>LoadLoad</strong>： 确保该屏障之前的读操作（Load）先于 之后的读操作完成。</li>
+<li><strong>StoreStore</strong>： 确保该屏障之前的写操作（Store）先于 之后的写操作完成，并且之前的写数据对其他处理器可见。</li>
+<li><strong>LoadStore</strong>： 确保该屏障之前的读操作（Load）先于 之后的写操作（Store）完成。</li>
+<li><strong>StoreLoad</strong>： 这是一个“全”屏障，它确保该屏障之前的<strong>所有</strong>写操作（Store）都对其他处理器<strong>可见之后</strong>，才执行该屏障之后的读操作（Load）。这是开销最大的一种屏障。</li>
+</ul>
+<h1 id="volatile易挥发的">volatile（易挥发的）</h1>
+<ul>
+<li>volatile关键字的作用是什么?</li>
+<li>volatile能保证原子性吗?</li>
+<li>之前32位机器上共享的long和double变量的为什么要用volatile? 现在64位机器上是否也要设置呢?</li>
+<li>i++为什么不能保证原子性?</li>
+<li>volatile是如何实现可见性的? 内存屏障。</li>
+<li>volatile是如何实现有序性的? happens-before等</li>
+<li>说下volatile的应用场景?</li>
+</ul>
+<h2 id="作用">作用</h2>
+<p>一旦一个共享变量（类的成员变量、类的静态成员变量）被volatile修饰之后，那么就具备了两层语义：</p>
+<ol>
+<li><strong>可见性</strong>：对一个 <code>volatile</code> 变量的写操作，对**所有后续的读操作（不限于同一个线程）**都是立即可见的。<strong>一个线程修改了 <code>volatile</code> 变量，通过内存屏障的配合，会触发缓存一致性协议，使所有其他处理器中缓存了该变量的缓存行失效。当另一个线程读取它时，会因为缓存失效而被迫从数据的拥有者（可能是另一个核心的缓存，也可能是主内存）重新获取最新的值，从而保证了可见性。</strong></li>
+<li><strong>有序性（禁止指令重排序）</strong>：编译器和使用乱序执行（Out-of-Order Execution）的 CPU 不能对 <code>volatile</code> 变量的读写操作与它前后的其他内存操作进行随意重排序。这通过内存屏障和 happens-before原则来实现。</li>
+</ol>
+<p>这些高级语义的底层实现，完全依赖于 JVM 在编译生成的机器码中插入<strong>内存屏障指令</strong>。</p>
+<h2 id="volatile-有序性-可见性实现原理">volatile 有序性、可见性实现原理</h2>
+<h3 id="前言-2">前言</h3>
+<p>为了提高处理速度，处理器不直接和内存进行通信，而是先将内存的数据读到内部缓存后再进行操作，但操作完后写入内存的时间是不确定的，其他处理器获取数据不一定是最新的，所以会出现各线程共享变量数据不一致的结果。为了解决这种情况，内存屏障诞生了。</p>
+<h3 id="jvm对volatile的插入屏障策略">JVM对volatile的插入屏障策略</h3>
+<h4 id="linux-arm">Linux ARM</h4>
+<p>ARM 架构是典型的<strong>弱内存模型</strong>。</p>
+<ul>
+<li><strong>硬件特性</strong>：
+<ol>
+<li>它<strong>既有Store Buffer，也有Invalidate Queue</strong>。</li>
+<li>为了极致性能，**它对指令重排序非常激进。ARM 的 CPU Load 与 Load，Load 与 Store，Store 与 Store，Store 与 Load 都会乱序。**默认情况下，几乎不保证任何顺序。</li>
+</ol>
+</li>
+<li><strong>屏障实现</strong>：
+<ul>
+<li>在这种弱模型上，JVM必须<strong>严格插入所有四种屏障</strong>来实现 <code>volatile</code> 的语义。</li>
+</ul>
+</li>
+<li><strong>使用的指令</strong>：
+<ul>
+<li>ARMv7 使用 <code>DMB</code>（数据内存屏障）指令来实现屏障。<code>DMB</code> 可以配置不同的选项来指定屏障的强度（例如，<code>DMB ISH</code> 指在“内部共享域”范围内同步）。
+<ul>
+<li><code>DMB</code> 指令同时完成了“清空本地Store Buffer到缓存”和“处理本地Invalidate Queue”的工作。</li>
+</ul>
+</li>
+<li>ARMv8 引入了更精细的 <code>LDAR</code>（加载-获取）和 <code>STLR</code>（存储-释放）指令对，可以更高效地实现同步原语。</li>
+</ul>
+</li>
+</ul>
+<p>因此在ARM架构下，<code>JVM</code>对<code>volatile</code>的插入屏障策略是非常保守的。</p>
+<ul>
+<li>在每个 <code>volatile</code> <strong>读</strong>操作的<strong>后面</strong>插入一个 <code>LoadLoad</code> 屏障；在每个 <code>volatile</code> <strong>读</strong>操作的<strong>后面</strong>插入一个 <code>LoadStore</code> 屏障。防止后续的普通<strong>读/写</strong>操作被重排序到<code>volatile读</code>之前。</li>
+<li>在每个 <code>volatile</code> <strong>写</strong>操作的<strong>前面</strong>插入一个 <code>StoreStore</code> 屏障；在每个 <code>volatile</code> <strong>写</strong>操作的<strong>后面</strong>插入一个 StoreLoad 屏障。</li>
+</ul>
+<figure data-type="image" tabindex="1"><img src="https://kanyewestforreal.github.io//post-images/java-thread-volatile-read-barrier.png" alt="java-thread-volatile-read-barrier" loading="lazy"></figure>
+<figure data-type="image" tabindex="2"><img src="https://kanyewestforreal.github.io//post-images/java-thread-volatile-write-barrier.png" alt="java-thread-volatile-write-barrier" loading="lazy"></figure>
+<p>来看源码部分，看看<strong>JVM 是如何在ARM架构下插入内存屏障的</strong>。可以看到在 ARM架构下使用的是 <code>dmb</code> 来实现的。</p>
+<pre><code class="language-java">//https://github.com/openjdk/jdk/blob/9a69bb807beb6693c68a7b11bee435c0bab7ceac/src/hotspot/cpu/arm/macroAssembler_arm.cpp
+void MacroAssembler::membar(Membar_mask_bits order_constraint,
+                            Register tmp,
+                            bool preserve_flags,
+                            Register load_tgt) {
+
+  if (order_constraint == StoreStore) {
+    dmb(DMB_st, tmp);
+  } else if ((order_constraint &amp; StoreLoad)  ||
+             (order_constraint &amp; LoadLoad)   ||
+             (order_constraint &amp; StoreStore) ||
+             (load_tgt == noreg)             ||
+             preserve_flags) {
+    
+    dmb(DMB_all, tmp);
+  } else {
+    // LoadStore: speculative stores reordeing is prohibited
+    // By providing an ordered load target register, we avoid an extra memory load reference
+      
+    //使用cmp和b（两个指令）
+    //cmp(load_tgt, load_tgt)： 这是一个比较操作，结果总是相等，不会跳转。
+    //b(not_taken, ne)： 这是一个条件分支，条件“不相等”永远不会成立，所以永远不会跳转。
+	//这两条指令组合起来相当于一个序列化指令
+    //它们会阻止CPU将屏障后的存储操作推测执行到屏障前的加载操作之前
+    //廉价地实现顺序保证LoadStore屏障，避免DMB指令的开销。
+    Label not_taken;
+    bind(not_taken);
+    cmp(load_tgt, load_tgt);
+    b(not_taken, ne);
+  }
+}
+
+  //https://github.com/openjdk/jdk/blob/1fe45265e446eeca5dc496085928ce20863a3172/src/hotspot/cpu/arm/assembler_arm_32.hpp#L523
+  enum DMB_Opt {
+    DMB_all = 0xf,
+    DMB_st  = 0xe,
+  };
+
+  void dmb(DMB_Opt opt, Register reg) {
+    if (VM_Version::arm_arch() &gt;= 7) {
+      emit_int32(0xF57FF050 | opt);
+    } else if (VM_Version::arm_arch() == 6) {
+      bool preserve_tmp = (reg == noreg);
+      if(preserve_tmp) {
+        reg = Rtemp;
+        str(reg, Address(SP, -wordSize, pre_indexed));
+      }
+      mov(reg, 0);
+      // DataMemoryBarrier
+      emit_int32(0xe &lt;&lt; 28 |
+                0xe &lt;&lt; 24 |
+                0x7 &lt;&lt; 16 |
+                reg-&gt;encoding() &lt;&lt; 12  |
+                0xf &lt;&lt; 8  |
+                0xb &lt;&lt; 4  |
+                0xa);
+      if(preserve_tmp) {
+        ldr(reg, Address(SP, wordSize, post_indexed));
+      }
+    }
+  }
+
+</code></pre>
+<p><strong>对于有volatile修饰的变量，会在JVM生成的字节码中加入<code>ACC_VOLATILE</code>的标识</strong>。后续会调用 <code>OrderAccess::fence()</code>对<code>volatile</code>修饰的变量进行进一步处理，这个函数的实现是与具体平台相关的。</p>
+<pre><code class="language-cpp">//src/hotspt/os_cpu/linux_arm/orderAccess_linux_arm.hpp:
+inline void OrderAccess::fence()      { dmb_sy(); }
+
+inline static void dmb_sy() {
+   if (!os::is_MP()) {
+     return;
+   }
+#ifdef AARCH64
+   __asm__ __volatile__ (&quot;dmb sy&quot; : : : &quot;memory&quot;);
+#else
+   if (VM_Version::arm_arch() &gt;= 7) {
+#ifdef __thumb__
+     __asm__ volatile (
+     &quot;dmb sy&quot;: : : &quot;memory&quot;);
+#else
+     __asm__ volatile (
+     &quot;.word 0xF57FF050 | 0xf&quot; : : : &quot;memory&quot;);
+#endif
+   } else {
+     intptr_t zero = 0;
+     __asm__ volatile (
+       &quot;mcr p15, 0, %0, c7, c10, 5&quot;
+       : : &quot;r&quot; (zero) : &quot;memory&quot;);
+   }
+#endif
+}
+</code></pre>
+<p>可以看到是使用 <code>dmb sy</code> 指令实现的。</p>
+<p>通过查询<code>ARM</code>官方的文档我们可以知道，<code>DMB SY</code>的作用：</p>
+<p>是一个<strong>内存屏障</strong>，确保在全系统域内，屏障之前的读写操作 先于 屏障之后的读写操作完成。也就是说禁止重排序。同时它会刷新当前处理器的Store Buffer到其缓存，并处理Invalidate Queue内的消息。</p>
+<h4 id="linux-x86">Linux  x86</h4>
+<p>x86 架构拥有相对<strong>强内存模型</strong>。</p>
+<ul>
+<li><strong>硬件特性</strong>：
+<ol>
+<li>它<strong>没有Invalidate Queue</strong>。这意味着一个CPU核心总会看到自己缓存的一致性视图，不会读取到已失效的数据（解决了读可见性问题）。</li>
+<li>它<strong>有Store Buffer</strong>，但它遵守“存储转发”（Store Forwarding）：如果后续的读操作依赖于Store Buffer中还未提交的数据，CPU会直接从Store Buffer中取数据，保证逻辑正确。</li>
+<li>除了<code>StoreLoad</code>情况，x86硬件本身保证了不会对“写-写”和“读-读/写”操作进行重排序。即，<strong>它天然保证了 <code>StoreStore</code>、 <code>LoadLoad</code> 和 <code>LoadStore</code> 屏障的语义</strong>。</li>
+</ol>
+</li>
+<li><strong>屏障实现</strong>：
+<ul>
+<li>因此，在x86上，JVM只需要为 <code>volatile写</code> 操作插入一个 <strong><code>StoreLoad</code> 屏障</strong>，就能同时满足 <code>StoreStore</code> 和 <code>StoreLoad</code> 的要求（因为<code>StoreStore</code>是x86天然保证的）。</li>
+<li>对于 <code>volatile读</code> 操作，由于x86天然的 <code>LoadLoad</code> 和 <code>LoadStore</code> 保证，<strong>JVM不需要插入任何屏障</strong>。</li>
+</ul>
+</li>
+<li><strong>使用的指令</strong>：
+<ul>
+<li>在x86上，<code>StoreLoad</code> 屏障对应的指令是 <code>LOCK</code> 前缀或 <code>MFENCE</code> 指令。
+<ul>
+<li><code>LOCK</code> 前缀用于修饰一个“读-修改-写”指令（如 <code>CMPXCHG</code>），它原子化执行操作的同时，会锁定内存总线，并清空本核心的Store Buffer，相当于一个内存屏障。</li>
+<li><code>MFENCE</code> 是更轻量级的选择，它专门用于保证内存操作的顺序。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p><strong>对于有volatile修饰的变量，会在JVM生成的字节码中加入<code>ACC_VOLATILE</code>的标识</strong>。后续会调用 <code>OrderAccess::fence()</code>对<code>volatile</code>修饰的变量进行进一步处理，简单看下 <code>Linux</code> 平台的 x86 架构的实现。</p>
+<pre><code class="language-C++">//src/hotspt/os_cpu/linux_x86/orderAccess_linux_x86.hpp:
+inline void OrderAccess::fence() {
+   // always use locked addl since mfence is sometimes expensive
+#ifdef AMD64
+  __asm__ volatile (&quot;lock; addl $0,0(%%rsp)&quot; : : : &quot;cc&quot;, &quot;memory&quot;);
+#else
+  __asm__ volatile (&quot;lock; addl $0,0(%%esp)&quot; : : : &quot;cc&quot;, &quot;memory&quot;);
+#endif
+  compiler_barrier();
+}
+</code></pre>
+<p>可以看到无论是 <code>AMD 64</code> 还是 <code>x86</code> 都是使用 <code>lock addl</code> 指令实现的。</p>
+<p>对<code>Class</code>文件查看汇编指令时，被 <code>volatile</code> 修饰的变量，如果对其进行<strong>写操作</strong>，可以看见会多一个<strong>lock前缀的指令</strong>：<code>lock addl $0x0,(%rsp)</code>。</p>
+<figure data-type="image" tabindex="3"><img src="https://kanyewestforreal.github.io//post-images/volatile_write_bytecode.png" alt="volatile修饰变量的写操作字节码" loading="lazy"></figure>
+<blockquote>
+<p>volatile 修饰变量的写操作</p>
+</blockquote>
+<figure data-type="image" tabindex="4"><img src="https://kanyewestforreal.github.io//post-images/not_volatile_write_bytecode.png" alt="非volatile 修饰变量的写操作" loading="lazy"></figure>
+<blockquote>
+<p>非volatile 修饰变量的写操作</p>
+</blockquote>
+<p>在 x86 上，实际只有 <code>StoreLoad</code> 这一个 Barrier 是有效的，因为x86 上没有 Invalidate Queue，每次 Store 数据又都会去 Store Buffer 排队，所以 <code>StoreStore</code>， <code>LoadLoad</code> 都不需要。x86 又能保证 Store 操作都会走 Store Buffer ，Store 不会被重排到 Load 之前，<code>LoadStore</code> 也是不需要的。只剩下一个 <code>StoreLoad</code> Barrier 在 x86 平台的 JVM 上被使用。</p>
+<p><strong>可以看到 x86 下使用的是 <code>lock</code> 来实现 <code>StoreLoad</code>。</strong></p>
+<p>这个 <code>LOCK</code> 指令强制将<code>Store Buffer</code>中的数据刷入缓存（并使其他缓存行失效），保证了可见性。同时又作为一个<code>StoreLoad</code>，禁止重排序，保证了有序性。</p>
+<pre><code class="language-cpp">//https://github.com/openjdk/jdk/blob/9a69bb807beb6693c68a7b11bee435c0bab7ceac/src/hotspot/cpu/x86/assembler_x86.hpp  
+enum Membar_mask_bits {
+    StoreStore = 1 &lt;&lt; 3,
+    LoadStore  = 1 &lt;&lt; 2,
+    StoreLoad  = 1 &lt;&lt; 1,
+    LoadLoad   = 1 &lt;&lt; 0
+  };
+
+  // Serializes memory and blows flags
+  void membar(Membar_mask_bits order_constraint) {
+    // We only have to handle StoreLoad
+    if (order_constraint &amp; StoreLoad) {
+	  //所有可用芯片都支持“lock”指令，这些指令足以作为屏障，
+      //并且比使用 cpuid 指令的替代方案快得多。我们在这里使用锁定的添加 [esp-C],0。
+      int offset = -VM_Version::L1_line_size();
+      if (offset &lt; -128) {
+        offset = -128;
+      }
+
+      lock();
+      addl(Address(rsp, offset), 0);// Assert the lock# signal here
+    }
+  }
+
+</code></pre>
+<h3 id="volatile禁止重排序场景">volatile禁止重排序场景</h3>
+<ul>
+<li>第二个操作是<strong>volatile写</strong>，<strong>不管第一个操作</strong>是什么都不会重排序到其后面。</li>
+<li>第一个操作是<strong>volatile读</strong>，<strong>不管第二个操作</strong>是什么都不会重排序到其前面。</li>
+<li>第一个操作时volatile写，第二个操作时volatile读，也不会发生重排序。</li>
+</ul>
+<h2 id="禁止使用volatile的条件">禁止使用volatile的条件</h2>
+<h3 id="在需要原子性时不可以仅使用volatile">在需要原子性时不可以仅使用volatile</h3>
+<p>没有实现锁。如果多线程并发执行自增操作，结果无法预测。</p>
+<h3 id="对变量的写操作依赖于当前值">对变量的写操作依赖于当前值</h3>
+<p><strong>自增操作（依赖当前值）</strong></p>
+<pre><code class="language-java">public class VolatileExample1 {
+    private volatile int count = 0;
+
+    // 线程不安全的自增操作
+    public void increment() {
+        count++; // 实际是三步操作：读取旧值 → 修改值 → 写回新值
+    }
+}
+</code></pre>
+<p><strong>问题</strong>：<br>
+<code>count++</code> 是 <code>读 → 改 → 写</code> 的复合操作，若多线程同时调用 <code>increment()</code>，可能出现以下情况：</p>
+<ol>
+<li>线程 A 读取 <code>count=0</code>；</li>
+<li>线程 B 也读取 <code>count=0</code>；</li>
+<li>线程 A 将 <code>count</code> 改为 1 并写回；</li>
+<li>线程 B 将 <code>count</code> 改为 1 并写回；<br>
+最终 <code>count</code> 实际只增加了 1（而不是预期的 2）。</li>
+</ol>
+<p><strong>结论</strong>：<br>
+对 <code>volatile</code> 变量的写操作如果依赖当前值（如自增），读取-&gt;修改-&gt;写回，这一系列操作必须是不可分的，否则任一调动链打断，就会导致预期结果无法出现，必须使用 <code>synchronized</code> 或 <code>AtomicInteger</code>。</p>
+<h3 id="该变量包含在有其他变量参与的不变式中">该变量包含在有其他变量参与的不变式中</h3>
+<p><strong>多变量依赖的不变式</strong></p>
+<pre><code class="language-java">public class VolatileExample2 {
+    private volatile int lower = 0;
+    private volatile int upper = 10;
+
+    // 检查 lower &lt;= upper 的不变式
+    public boolean isValid() {
+        return lower &lt;= upper;
+    }
+
+    // 线程 A 调用：设置 lower=5
+    public void setLower(int value) {
+        if (value &gt; upper) throw new IllegalArgumentException();
+        lower = value;
+    }
+
+    // 线程 B 调用：设置 upper=4
+    public void setUpper(int value) {
+        if (value &lt; lower) throw new IllegalArgumentException();
+        upper = value;
+    }
+}
+</code></pre>
+<p><strong>问题</strong>：</p>
+<ol>
+<li>初始状态：<code>lower=0</code>, <code>upper=10</code>；</li>
+<li>线程 A 调用 <code>setLower(5)</code>，检查 <code>5 &lt;= 10</code> 通过；</li>
+<li>线程 B 调用 <code>setUpper(4)</code>，检查 <code>4 &gt;= 0</code> 通过；</li>
+<li>线程 A 执行 <code>lower=5</code>；</li>
+<li>线程 B 执行 <code>upper=4</code>；<br>
+最终 <code>lower=5</code> 且 <code>upper=4</code>，破坏了 <code>lower &lt;= upper</code> 的不变式。</li>
+</ol>
+<p><strong>结论</strong>：<br>
+若变量与其他变量存在不变式（如 <code>lower &lt;= upper</code>），读取-&gt;检查-&gt;修改，这一系列操作必须是不可分的，否则任一调动链打断，就会导致预期结果无法出现，仅仅用 <code>volatile</code> 无法保证原子性，需使用 <code>synchronized</code> 或锁机制。</p>
+<p>解决：</p>
+<pre><code class="language-java">public class FixedInvariant {
+    private int lower = 0;
+    private int upper = 10;
+
+    // 用 synchronized 保证原子性
+    public synchronized void setLower(int value) {
+        if (value &gt; upper) throw new IllegalArgumentException();
+        lower = value;
+    }
+
+    public synchronized void setUpper(int value) {
+        if (value &lt; lower) throw new IllegalArgumentException();
+        upper = value;
+    }
+}
+</code></pre>
+<p><strong>原理</strong>：</p>
+<ul>
+<li>线程 A 调用 <code>setLower(5)</code> 时，会获取对象锁。</li>
+<li>线程 B 调用 <code>setUpper(4)</code> 时，必须等待线程 A 释放锁。</li>
+<li>线程 A 的 <code>检查 → 修改</code> 操作是原子的，不会被线程 B 打断。</li>
+<li>最终 <code>lower=5</code>, <code>upper=10</code>（因为线程 B 的 <code>setUpper(4)</code> 会因 <code>4 &lt; 5</code> 抛出异常）。</li>
+</ul>
+<h2 id="常使用volatile的场景">常使用volatile的场景</h2>
+<h3 id="状态标志">状态标志</h3>
+<p>简单布尔值控制线程启停。</p>
+<p>实际应用有：<code>Livedata#postValue</code>的延迟推送数据。</p>
+<p><strong>需求</strong>：<strong>一个线程需要根据另一个线程设置的标志终止循环。</strong><br>
+<strong>示例</strong>：</p>
+<pre><code class="language-java">public class ShutdownThread {
+    private volatile boolean shutdownRequested = false;
+
+    // 工作线程
+    public void doWork() {
+        while (!shutdownRequested) {
+            // 执行任务...
+        }
+        System.out.println(&quot;线程安全退出&quot;);
+    }
+
+    // 外部线程调用此方法终止工作线程
+    public void shutdown() {
+        shutdownRequested = true;
+    }
+}
+</code></pre>
+<p><strong>解释</strong>：</p>
+<ul>
+<li><strong>为什么用 <code>volatile</code></strong>：<br>
+工作线程需要立即感知 <code>shutdownRequested</code> 被修改为 <code>true</code>。<br>
+若不用 <code>volatile</code>，工作线程可能因本地缓存问题，永远无法检测到 <code>shutdownRequested</code> 的变化。</li>
+<li><strong>符合条件</strong>：<br>
+对 <code>shutdownRequested</code> 的写操作是<strong>直接赋值</strong>（不依赖当前值），且不参与其他变量的不变式。</li>
+</ul>
+<h3 id="安全发布对象">安全发布对象</h3>
+<p>如单例模式中的双重检查锁定。</p>
+<p><strong>需求</strong>：实现线程安全的单例模式。<br>
+<strong>示例</strong>：</p>
+<pre><code class="language-java">public class Singleton {
+    private static volatile Singleton instance;
+
+    private Singleton() {}
+
+    public static Singleton getInstance() {
+        if (instance == null) {                      
+            // 第一次检查：避免更多的锁竞争
+            //（每个线程都竞争进入接下来的synchronized代码块，只需要instance为不空，就没必要竞争，直接返回结果。
+            // instance是volatile对象，只要被创建，内存屏障立马通知其他核心更新，减少后续锁竞争）
+            synchronized (Singleton.class) { 
+                //使用synchronized是为了保证原子性、以及！可见性！
+                if (instance == null) {               
+                    // 第二次检查：避免多次重复new：线程2经过判断为null，准备竞争锁去创建对象，
+                    // 但是线程1已经在创建对象，instance指向完全初始化的对象后，内存屏障立马通知其他核心更新，
+                    // 线程1释放锁，线程2进入锁判断发现不为null结束。
+                    instance = new Singleton();       
+                    // volatile 的作用主要是禁止指令重排序，保证一定完全初始化
+                }
+            }
+        }
+        return instance;
+    }
+}
+</code></pre>
+<p><strong>解释</strong>：</p>
+<ul>
+<li>
+<p><strong>为什么用 <code>volatile</code></strong>：</p>
+</li>
+<li>
+<p>当通过 <code>new Singleton()</code> 创建一个对象时，实际会经历以下步骤：</p>
+<pre><code class="language-java">instance = new Singleton(); // 实际分为 3 步：
+//1. 分配内存空间（堆内存中开辟一块内存）
+//2. 调用构造方法初始化对象（执行 `private Singleton() {}`）
+//3. 将 `instance` 引用指向分配的内存地址（赋值操作）
+</code></pre>
+<p><code>new Singleton()</code>的步骤可能被 JVM 重排序为：</p>
+<ol>
+<li>分配内存空间；</li>
+<li>将引用指向内存（此时 <code>instance != null</code>）；</li>
+<li>调用构造方法初始化对象<br>
+若没有 <code>volatile</code>，其他线程可能拿到未初始化的 <code>instance</code>。</li>
+</ol>
+</li>
+<li>
+<p><strong>符合条件</strong>：<br>
+<code>instance</code> 的写操作是直接赋值，且不依赖其他变量。</p>
+</li>
+</ul>
+<h3 id="观察者模式">观察者模式</h3>
+<p>状态变更的即时通知。</p>
+<p><strong>需求</strong>：一个线程更新状态，其他线程需要立即感知。<br>
+<strong>示例</strong>：</p>
+<pre><code class="language-java">public class SensorDataMonitor {
+    private volatile double currentTemperature;
+
+    // 传感器线程调用此方法更新温度
+    public void updateTemperature(double temperature) {
+        currentTemperature = temperature;
+    }
+
+    // 监控线程调用此方法获取最新温度
+    public void displayTemperature() {
+        System.out.println(&quot;当前温度：&quot; + currentTemperature);
+    }
+}
+</code></pre>
+<p><strong>解释</strong>：</p>
+<ul>
+<li><strong>为什么用 <code>volatile</code></strong>：<br>
+确保监控线程能立即读取到传感器线程写入的最新温度值。<br>
+若不用 <code>volatile</code>，监控线程可能因缓存问题读到旧值。</li>
+<li><strong>符合条件</strong>：<br>
+直接赋值，不依赖当前值，且独立于其他变量。</li>
+</ul>
+<h3 id="读多写少的计数器">读多写少的计数器</h3>
+<p>写操作冲突极少时的高性能读取。</p>
+<p><strong>需求</strong>：一个计数器，写操作极少，读操作频繁。<br>
+<strong>示例</strong>：</p>
+<pre><code class="language-java">public class LowContentionCounter {
+    private volatile int count = 0;
+
+    // 仅偶尔调用此方法
+    public void increment() {
+        count++;  // 不保证原子性，但写操作极少时冲突概率低
+    }
+
+    // 频繁调用此方法
+    public int getCount() {
+        return count;  // volatile 保证读取最新值
+    }
+}
+</code></pre>
+<p><strong>解释</strong>：</p>
+<ul>
+<li><strong>为什么用 <code>volatile</code></strong>：<br>
+写操作极少时，<code>volatile</code> 的可见性足够满足需求，且比 <code>synchronized</code> 或 <code>AtomicInteger</code> 性能更高。</li>
+<li><strong>风险</strong>：<br>
+<code>count++</code> 不是原子操作，写操作较多时需改用 <code>AtomicInteger</code>。</li>
+</ul>
+<h1 id="synchronized-ˈsɪŋkrənʌɪz">synchronized （/ˈsɪŋkrənʌɪz/）</h1>
+<ul>
+<li>Synchronized可以作用在哪里? 分别通过对象锁和类锁进行举例。</li>
+<li>Synchronized本质上是通过什么保证线程安全的? 分三个方面回答：加锁和释放锁的原理，可重入原理，保证可见性原理。</li>
+<li>Synchronized由什么样的缺陷? Java Lock是怎么弥补这些缺陷的。</li>
+<li>Synchronized和Lock的对比，和选择?</li>
+<li>Synchronized在使用时有何注意事项?</li>
+<li>Synchronized修饰的方法在抛出异常时,会释放锁吗?</li>
+<li>多个线程等待同一个Synchronized锁的时候，JVM如何选择下一个获取锁的线程?</li>
+<li>Synchronized使得同时只有一个线程可以执行，性能比较差，有什么提升的方法?</li>
+<li>我想更加灵活的控制锁的释放和获取(现在释放锁和获取锁的时机都被规定死了)，怎么办?</li>
+<li>什么是锁的升级和降级? 什么是JVM里的偏斜锁、轻量级锁、重量级锁?</li>
+<li>不同的JDK中对Synchronized有何优化?</li>
+</ul>
+<h2 id="使用注意">使用注意</h2>
+<p>在应用<code>Sychronized</code>关键字时需要把握如下注意点：</p>
+<ul>
+<li>一把锁只能同时被一个线程获取，没有获得锁的线程只能等待；</li>
+<li><strong>核心原则</strong>：锁的粒度越小越好，持有时间越短越好！<strong>也就是说尽可能的选择同步代码块，而不是同步方法。</strong></li>
+<li>synchronized(this)、synchronized(非static方法)，意味着每个实例都对应有自己的一把锁,不同实例之间互不影响；synchronized(*.class)、synchronized(static方法)的时候，所有实例公用同一把锁。</li>
+<li>synchronized(非this) 比 synchronized(this) 可以实现更细致的颗粒度。</li>
+<li>synchronized修饰的方法，无论方法正常执行完毕还是抛出异常，最后都会释放锁</li>
+</ul>
+<h2 id="synchronized修饰的目标">synchronized修饰的目标</h2>
+<p>从修饰的目标来分可以分为实例对象锁、类对象锁。</p>
+<h3 id="实例对象锁">实例对象锁</h3>
+<p>synchronized(object)、 synchronized(this)、synchronized(非static方法)。</p>
+<h4 id="synchronized非static方法-synchronizedthis-对比">synchronized(非static方法)、synchronized(this) 对比</h4>
+<p>对于一些方法中，可能存在着不需要同步的代码块，那么只需要用synchronized(this)修饰部分需要同步的代码块即可。性能比synchronized(非static方法)，修饰一整个方法好。</p>
+<pre><code class="language-java">public class Counter {
+    private int count = 0;
+    
+    // synchronized修饰非static方法
+    // 锁是当前的 Counter 实例对象，例如 counter1, counter2
+    // 当一个线程访问 某个实例 的同步方法时，该实例会被锁定。
+    // 其他线程要访问同一个实例的任何一个同步方法都会被阻塞。
+    // 但不同实例之间的同步方法互不干扰。
+    public synchronized void increment() {
+        count++;
+    }
+    
+    public void decrement() {
+        Do Something
+        // 确保所有对共享资源（这里的 count）的相关操作（包括读取、判断、修改）都放在同步块内
+        // 锁是当前实例 (this)，效果同synchronized修饰非static方法
+        synchronized (this) {
+            count--;
+        }
+    }
+    
+}
+</code></pre>
+<h4 id="synchronized非this-synchronizedthis-对比">synchronized(非this)、 synchronized(this) 对比</h4>
+<p>如果一个类中有很多个synchronized方法或者synchronized(this)，<strong>在同一个实例中，synchronized方法或者synchronized(this)之间会互斥</strong>。</p>
+<p>但如果使用synchronized(非this)，与 synchronized(非this)代码块 、 synchronized方法、synchronized(this) 之间是<strong>非互斥</strong>的，它们之间锁的对象不同。</p>
+<pre><code class="language-java">public class Counter {
+    private int count = 0;
+    // 专门用于做锁的对象，通常声明为 final
+    private final Object lock = new Object();
+    public void increment() {
+        // 锁是自定义的 lock 对象
+        synchronized (lock) {
+            count++;
+        }
+    }
+
+    public void reset() {
+        // 锁是类的 Class 对象，效果同同步静态方法
+        synchronized (Counter.class) {
+            count = 0;
+        }
+    }
+}
+</code></pre>
+<h3 id="类对象锁">类对象锁</h3>
+<h4 id="synchronizedclass-synchronizedstatic方法对比">synchronized(*.class)、synchronized(static方法)对比</h4>
+<p>对于一些方法中，可能存在着不需要同步的代码块，那么只需要用synchronized(*.class)修饰部分需要同步的代码块即可。性能比synchronized(static方法)，修饰一整个方法好。</p>
+<pre><code class="language-java">public class MyClass {
+    // 静态同步方法
+    public static synchronized void staticSyncMethod() {
+        // 使用MyClass.class作为锁
+    }
+
+    // 实例方法中的同步代码块
+    public void instanceMethod() {
+        synchronized(MyClass.class) {
+            // 同样使用MyClass.class作为锁
+        }
+    }
+}
+</code></pre>
+<p>线程A调用<code>staticSyncMethod()</code>时，线程B若尝试进入<code>instanceMethod()</code>的同步块，会被阻塞，反之亦然。</p>
+<p>当 synchronized(static方法)、synchronized(*.class)时，锁的是当前类的 Class 对象，不属于某个对象。当前类的 Class 对象锁被获取，<strong>不影响 实例对象锁 的获取</strong>，两者不互斥，本质上是 this 和 Class 的不同。</p>
+<p>由于静态成员变量不专属于任何一个对象，因此通过 Class 锁可以控制静态成员变量的并发操作。</p>
+<p>需要注意的是如果线程 A 调用了一个对象的非静态 synchronized 方法，线程 B 需要调用这个对象所属类的静态 synchronized 方法，<strong>是不会发生互斥的</strong>！因为访问静态 synchronized 方法占用的锁是当前类的Class对象，而访问 非静态 synchronized 方法占用的锁是当前对象（this）的锁。</p>
+<h2 id="原子性实现加锁和释放锁的原理">原子性实现（加锁和释放锁）的原理</h2>
+<p>原子性，简单的的说就是一个线程在执行过程中不会被其他线程干扰。</p>
+<p>直接看看<code>synchronized</code>修饰的方法、代码块背后的原理。</p>
+<pre><code class="language-java">public void test(Object value){
+        boolean postTask;
+        synchronized (lock) {
+            postTask = pendingData == NOT_SET;
+            pendingData = value;
+        }
+        if (!postTask) {
+            return;
+        }
+        setValue(value);
+	}
+
+public synchronized void setValue(Object value){
+		mData = pendingData;
+		pendingData = NOT_SET;
+}
+
+//反编译结果
+public void test(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)V
+    flags: (0x0001) ACC_PUBLIC
+    Code:
+      stack=2, locals=5, args_size=2
+         0: aload_0
+         1: getfield      #7                  // Field lock:Ljava/lang/Object;
+         4: dup
+         5: astore_3
+-------------------------------
+         6: monitorenter
+         7: aload_0
+         8: getfield      #16                 // Field pendingData:Ljava/lang/Object;
+        11: aload_0
+        12: getfield      #13                 // Field NOT_SET:Ljava/lang/Object;
+        15: if_acmpne     22
+        18: iconst_1
+        19: goto          23
+        22: iconst_0
+        23: istore_2
+        24: aload_0
+        25: aload_1
+        26: putfield      #16                 // Field pendingData:Ljava/lang/Object;
+        29: aload_3
+        30: monitorexit
+------------------------------
+        31: goto          41
+        34: astore        4
+        36: aload_3
+------------------------------
+        37: monitorexit
+        38: aload         4
+        40: athrow
+        41: iload_2
+        42: ifne          46
+        45: return
+        46: aload_0
+        47: aload_1
+        48: invokevirtual #19                 // Method setValue:(Ljava/lang/Object;)V
+        51: return
+            
+public synchronized void setValue(java.lang.Object);
+    descriptor: (Ljava/lang/Object;)V
+--------flags: (0x0021) ACC_PUBLIC, ACC_SYNCHRONIZED -------------------
+    Code:
+      stack=2, locals=2, args_size=2
+         0: aload_0
+         1: aload_0
+         2: getfield      #16                 // Field pendingData:Ljava/lang/Object;
+         5: putfield      #23                 // Field mData:Ljava/lang/Object;
+         8: aload_0
+         9: aload_0
+        10: getfield      #13                 // Field NOT_SET:Ljava/lang/Object;
+        13: putfield      #16                 // Field pendingData:Ljava/lang/Object;
+        16: return
+      LineNumberTable:
+        line 20: 0
+        line 21: 8
+        line 22: 16
+</code></pre>
+<p>从反编译的结果来看，JVM对于同步方法和同步代码块的处理方式不同，<strong>对于同步方法，JVM采用<code>ACC_SYNCHRONIZED</code>标记符来实现同步</strong>；<strong>而对于同步代码块，JVM则采用 <code>monitorenter</code>和<code>monitorexit</code> 这两个指令实现同步</strong>。</p>
+<h3 id="acc_synchronized标记符">ACC_SYNCHRONIZED标记符</h3>
+<p>当某个线程要访问某个方法的时候，会检查是否有ACC_SYNCHRONIZED标志，如果有设置，则需要先获得锁，然后开始执行方法，方法执行之后再释放锁。</p>
+<p>这时如果其他线程来请求执行方法，会因为无法获得锁而被阻塞。值得注意的是，如果在方法执行过程中，发生了异常，并且<strong>方法内部并没有处理该异常</strong>，<strong>那么在异常被抛到方法外面之前，监视器锁会被自动释放。</strong></p>
+<h3 id="synchronized锁的原理">Synchronized锁的原理</h3>
+<h4 id="锁对象">锁对象</h4>
+<p><strong>锁其实就是一个对象</strong>，每一个对象都能够作为<code>synchronized</code>的锁。</p>
+<p><code>HotSpot JVM</code>中，对象在内存中存储的结构可以分为三种：对象头（Object Header）、实例数据（Instance Data）和对齐填充（Padding）。</p>
+<figure data-type="image" tabindex="5"><img src="https://kanyewestforreal.github.io//post-images/instance_data_struct.png" alt="instance_ds" loading="lazy"></figure>
+<p>锁对象的信息是存储在对象头（Object Header）中的，主要是一个叫<strong>Mark Word</strong>的区域。</p>
+<table>
+<thead>
+<tr>
+<th>长度</th>
+<th>内容</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>32/64bit</td>
+<td>Mark Word</td>
+<td>存储对象的 hashCode 、锁信息等</td>
+</tr>
+<tr>
+<td>32/64bit</td>
+<td>Class Metadata Address</td>
+<td>类型指针指向对象的类元数据，JVM通过这个指针确定该对象是哪个类的实例。</td>
+</tr>
+<tr>
+<td>32/64bit</td>
+<td>Array length</td>
+<td>数组的长度（如果是数组）</td>
+</tr>
+</tbody>
+</table>
+<p>Mark Word 的格式：</p>
+<table>
+<thead>
+<tr>
+<th>状态</th>
+<th>29 bit 或 61 bit</th>
+<th>1 bit 是否支持偏向锁？</th>
+<th>2 bit 锁标志位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>未锁定</td>
+<td>hashcode、GC年龄</td>
+<td>0</td>
+<td>01</td>
+</tr>
+<tr>
+<td>可偏向</td>
+<td>持有偏向锁的线程ID、epoch偏向时间戳、GC年龄</td>
+<td>1</td>
+<td>01</td>
+</tr>
+<tr>
+<td>轻量级锁定</td>
+<td>指向线程的栈中<code>Lock Record</code>的指针</td>
+<td>向左合并，用于记录指针</td>
+<td>00</td>
+</tr>
+<tr>
+<td>重量级锁定</td>
+<td>指向对象的管程<code>Monitor</code>的指针</td>
+<td>向左合并，用于记录指针</td>
+<td>10</td>
+</tr>
+<tr>
+<td>GC 标记</td>
+<td>-</td>
+<td>-</td>
+<td>11</td>
+</tr>
+</tbody>
+</table>
+<h4 id="四种锁状态">四种锁状态</h4>
+<p>在 JDK 1.6 及其以后，一个对象作为<code>synchronized</code>的锁有四种锁状态，它们级别由低到高依次是：</p>
+<ul>
+<li>无锁状态</li>
+<li>偏向锁状态：匿名可偏向锁、可偏向的偏向锁、不可偏向的偏向锁、禁用偏向的偏向锁
+<ul>
+<li>匿名可偏向锁： 偏向锁线程ID为空；低三位为101</li>
+<li>可偏向的偏向锁： 就是我们认知的偏向锁，通过CAS进行更新锁对象头的Mark Word线程ID；</li>
+<li>不可偏向的偏向锁：可以理解只偏向一次，一旦被指向一个线程，再有线程竞争直接升级锁；</li>
+<li>禁用偏向的偏向锁：<strong>单个类偏向撤销的计数达到 20，就会进行批量重偏向。距上次批量重新偏向（偏向T1重新偏向到T2） 25 秒内，<code>Klass</code>的锁撤销计数达到 40，就会发生批量撤销</strong>，此时JVM会认为这个类不适合使用偏向锁，由此会禁用此类的偏向锁，<strong>低三位变为001</strong>，如果有竞争直接升级为轻量锁。</li>
+</ul>
+</li>
+<li>轻量级锁状态</li>
+<li>重量级锁状态</li>
+</ul>
+<p>几种锁会随着竞争情况逐渐升级，锁的升级很容易发生，但是锁降级发生的条件就比较苛刻了，锁降级只发生在<code>Stop The World</code>阶段。</p>
+<h4 id="锁升级流程">锁升级流程</h4>
+<h5 id="无锁">无锁</h5>
+<p>一个对象刚被创建出来，还没有任何线程来竞争它，此时处于无锁状态。<strong>低三位为001</strong>。</p>
+<p>JVM启动时会<strong>延时初始化偏向锁</strong>，默认是4000ms。之所以需要延时初始化偏向锁，是JVM启动时是多线程启动，如果一开始就初始化偏向锁，可能会引发锁升级导致启动速度下降。</p>
+<p>在初始化之前创建的对象为<strong>无锁状态</strong>。</p>
+<p>初始化后会将所有加载的<code>Klass#prototype_header</code>修改为匿名可偏向样式（当创建一个对象时，会通过<code>Klass#prototype_header</code>来初始化该对象的对象头）。</p>
+<p>也就是说初始化结束后，所有对象的对象头Mark Word都为<strong>匿名可偏向状态</strong>，<strong>指向线程的ID为空</strong>，<strong>低三位101</strong>。</p>
+<p>**而对于无锁状态的锁对象，如果有竞争，会直接进入到轻量级锁。**这也是为什么JVM启动前4秒，如果锁对象有竞争会直接进入到轻量级锁的原因。</p>
+<p>因此只有锁对象处于<strong>匿名可偏向</strong>状态，线程才能拿到偏向锁。而处于无锁状态的锁对象，只能进入到轻量级锁状态。</p>
+<p>补充：匿名可偏向状态，意味着对象的Mark Word没有保存对象的hashcode！！！如果计算hashcode后，第一次获取锁就直接是轻量级锁；如果在同步块执行时，计算hashcode，锁会直接升级为重量级锁。</p>
+<h5 id="偏向锁-biased-locking">偏向锁 (Biased Locking)</h5>
+<p>偏向锁的目的是：消除在<strong>无竞争</strong>情况下（即锁始终由一个线程持有）的同步开销。它的假设是极端的：“这个锁一旦被第一个线程获得，以后就再也不会被其他线程竞争了”。</p>
+<h6 id="加锁">加锁</h6>
+<pre><code class="language-cpp">CASE(_monitorenter): {  
+  //锁对象
+  oop lockee = STACK_OBJECT(-1);
+  // derefing's lockee ought to provoke implicit null check
+  CHECK_NULL(lockee);
+  // 1
+  // 在栈中找到第一个空闲的Lock Record
+  // 会找到栈中最高的
+  BasicObjectLock* limit = istate-&gt;monitor_base();
+  BasicObjectLock* most_recent = (BasicObjectLock*) istate-&gt;stack_base();
+  BasicObjectLock* entry = NULL;
+  while (most_recent != limit ) {
+    if (most_recent-&gt;obj() == NULL) entry = most_recent;
+    else if (most_recent-&gt;obj() == lockee) break;
+    most_recent++;
+  }
+  // entry不为null，代表还有空闲的Lock Record
+  if (entry != NULL) {
+    // 将Lock Record的obj指针指向锁对象
+    entry-&gt;set_obj(lockee);
+    int success = false;
+    uintptr_t epoch_mask_in_place = (uintptr_t)markOopDesc::epoch_mask_in_place;
+    // markoop即锁对象头的mark word
+    markOop mark = lockee-&gt;mark();
+    intptr_t hash = (intptr_t) markOopDesc::no_hash;
+    // 2
+    // implies UseBiasedLocking
+    // 如果为偏向模式，即判断标识位是否为101
+    if (mark-&gt;has_bias_pattern()) {
+      uintptr_t thread_ident;
+      uintptr_t anticipated_bias_locking_value;
+      thread_ident = (uintptr_t)istate-&gt;thread();
+     // code 4：这里有几步操作，下文分析
+      anticipated_bias_locking_value =
+          //计算 是否偏向、 Klass是否开启偏向模式、 Epoch是否过期
+          //klass()-&gt;prototype_header() 包含是否开启偏向模式、Klass的Epoch
+        (((uintptr_t)lockee-&gt;klass()-&gt;prototype_header() | thread_ident) 
+         ^ (uintptr_t)mark) //当前锁对象的Mark Word
+         &amp;~((uintptr_t) markOopDesc::age_mask_in_place); //忽略GC Age
+      // 4
+      if  (anticipated_bias_locking_value == 0) {
+        // already biased towards this thread, nothing to do
+        // 偏向的是自己 且 Klass开启偏向模式 且 Epoch未过期，啥都不做
+        if (PrintBiasedLockingStatistics) {
+          (* BiasedLocking::biased_lock_entry_count_addr())++;
+        }
+        success = true;
+      }
+      // 3
+      // class的prototype_header不是偏向模式
+      else if ((anticipated_bias_locking_value &amp; markOopDesc::biased_lock_mask_in_place) != 0) {
+        // 尝试撤销偏向 用klass()-&gt;prototype_header()替换掉对象的Mark Word
+        // 大概率是恢复无锁状态
+        markOop header = lockee-&gt;klass()-&gt;prototype_header();
+        if (hash != markOopDesc::no_hash) {
+          header = header-&gt;copy_set_hash(hash);
+        }
+        // 利用CAS操作将mark word替换为class中的mark word
+        if (Atomic::cmpxchg_ptr(header, lockee-&gt;mark_addr(), mark) == mark) {
+          if (PrintBiasedLockingStatistics)
+            (*BiasedLocking::revoked_lock_entry_count_addr())++;
+        }
+      }
+      // epoch过期，重新偏向
+      else if ((anticipated_bias_locking_value &amp; epoch_mask_in_place) !=0) {
+        // 构造一个偏向当前线程的mark word
+        markOop new_header = (markOop) ( (intptr_t) lockee-&gt;klass()-&gt;prototype_header() | thread_ident);
+        if (hash != markOopDesc::no_hash) {
+          new_header = new_header-&gt;copy_set_hash(hash);
+        }
+        // CAS替换对象头的mark word  
+        if (Atomic::cmpxchg_ptr((void*)new_header, lockee-&gt;mark_addr(), mark) == mark) {
+          if (PrintBiasedLockingStatistics)
+            (* BiasedLocking::rebiased_lock_entry_count_addr())++;
+        }
+        else {
+          // 重偏向失败，代表存在多线程竞争，则调用monitorenter方法进行锁升级
+          CALL_VM(InterpreterRuntime::monitorenter(THREAD, entry), handle_exception);
+        }
+        success = true;    
+      }
+      else {
+        // try to bias towards thread in case object is anonymously biased
+        // 尝试偏向该线程，只有匿名可偏向能成功
+        // 构建了匿名可偏向的mark word
+        markOop header = (markOop) ((uintptr_t) mark &amp; ((uintptr_t)markOopDesc::biased_lock_mask_in_place |(uintptr_t)markOopDesc::age_mask_in_place |epoch_mask_in_place));
+        if (hash != markOopDesc::no_hash) {
+          header = header-&gt;copy_set_hash(hash);
+        }
+        // 用位运算设置thread ID
+        markOop new_header = (markOop) ((uintptr_t) header | thread_ident);、
+        // 只有匿名可偏向才能成功
+        if (Atomic::cmpxchg_ptr((void*)new_header, lockee-&gt;mark_addr(), header) == header) {
+          // CAS修改成功    
+          if (PrintBiasedLockingStatistics)
+            (* BiasedLocking::anonymously_biased_lock_entry_count_addr())++;
+        }
+        else {
+          // 失败说明存在竞争，进入monitorenter
+          CALL_VM(InterpreterRuntime::monitorenter(THREAD, entry), handle_exception);
+        }
+        success = true;
+      }
+    }
+    // 5
+    // traditional lightweight locking
+    // false走轻量级锁逻辑
+    // 这是偏向锁、轻量锁混用的代码
+    // T1持有偏向锁A，T2争夺A，CAS必然失败，走向InterpreterRuntime::monitorenter
+    // T1持有轻量锁B，T2争夺B，CAS可能成功，因为T1此时可能释放了锁
+    if (!success) {
+      
+      //lockee是锁对象，创建一个以其Mark Word作为蓝本的无锁状态Mark Word
+      //然后写入Lock Record的Displaced Mark Word
+      markOop displaced = lockee-&gt;mark()-&gt;set_unlocked();
+      entry-&gt;lock()-&gt;set_displaced_header(displaced);
+        
+      bool call_vm = UseHeavyMonitors;
+      //CAS操作，锁对象头现在的Mark Word 修改为 指向Lock Record的指针
+      //这里还有需要注意的！：
+	  //轻量级锁的锁标志位为 00，转换为数字后就是 4 的倍数。
+      //比如 0100 表示 4， 1000 表示 8。
+	  //如果 Lock Record 的地址是均为 4 的倍数，那么设置完 Lock Record 地址后，
+      //Mark Word 的末两位值就是 00 了，就是说一个操作完成了两件事：
+	  //第一件事情: 将锁对象头的Mark Word修改成指向Lock Record的指针
+	  //第二件事情: 因为Lock Record的地址 均为4的倍数 ,即 锁标志位修改为00
+      if (call_vm || Atomic::cmpxchg_ptr(entry, lockee-&gt;mark_addr(), displaced) != displaced) {
+        // 如果锁对象是偏向锁，CAS必然不成功
+        //偏向锁，锁对象的Mark Word低三位是101，刚刚构建的Mark Word低三位是001，CAS必然失败，只能走向锁升级。
+        // 如果锁对象是无锁状态/轻量级锁，CAS有可能成功。
+        // 如果成功，说明此时锁对象已经被释放，可以获取
+        // 如果失败，说明此时锁对象仍然被持有，只能走向判断是否重入或者锁升级
+        // 这里是判断是否是轻量锁重入，不是偏向锁，偏向锁的在上方
+        if (!call_vm &amp;&amp; THREAD-&gt;is_lock_owned((address) displaced-&gt;clear_lock_bits())) {
+          // 如果是锁重入，则直接将Displaced Mark Word设置为null
+          // 因为轻量级锁重入是使用lock record的数量来计入的
+          entry-&gt;lock()-&gt;set_displaced_header(NULL);
+        } else {
+          CALL_VM(InterpreterRuntime::monitorenter(THREAD, entry), handle_exception);
+        }
+      }
+    }
+    UPDATE_PC_AND_TOS_AND_CONTINUE(1, -1);
+  } else {
+    // 没拿到lock record，重新执行
+    istate-&gt;set_msg(more_monitors);
+    UPDATE_PC_AND_RETURN(0); // Re-execute
+  }
+}
+</code></pre>
+<p>第一个线程T1访问<code>synchronized</code>同步块时：</p>
+<p>1.在T1栈顶找到空闲Lock Record（都是预先创建好了的），</p>
+<p>2.检查锁对象头的Mark Word低三位是否为101？</p>
+<p>2.1 不是101，锁升级</p>
+<p>3.是101，检查Mark Word的线程ID是否为自己？</p>
+<p>4.线程ID是自己，则直接获得锁，success = true；</p>
+<p>​	3.1 线程ID不是自己，检查<code>Klass</code>是否支持偏向？</p>
+<p>​		3.1.1 不支持偏向，使用CAS将<code>Klass#prototype_header</code>替换 Mark Word，无论CAS是否成功都会进入5（没有设置success = true）。</p>
+<p>​	3.2 线程ID不是自己，<code>Klass</code>支持偏向，检查<code>epoch</code>是否等于<code>Klass#epoch</code>？</p>
+<p>​		3.2.1 不等于：通过CAS重偏向（说明锁偏向过给其他线程，但是被释放了，现在可以重新偏向）</p>
+<p>​		3.2.2 CAS成功，T1持有锁。<code>success = true</code>。</p>
+<p>​		3.2.3 CAS失败，说明还有锁竞争，锁撤销+锁升级：<code>InterpreterRuntime::monitorenter</code>。</p>
+<p>​	3.3 线程ID不是自己，<code>Klass</code>支持偏向，<code>epoch</code>等于<code>Klass#epoch</code>，<strong>如果对象是匿名可偏向状态</strong>（即未偏向任何线程，线程ID为空；如果不是匿名可偏向状态，success == false）</p>
+<p>​	3.4 T1进行CAS操作，<strong>将自己的线程ID写入锁对象头的Mark Word</strong>。</p>
+<p>​		3.4.1 如果CAS成功，那么T1就持有了偏向锁。<code>success = true</code>。</p>
+<p>​		3.4.2 如果失败，说明还有锁竞争，锁撤销+锁升级：<code>InterpreterRuntime::monitorenter</code>。</p>
+<p>5.如果<code>success == false</code>：</p>
+<p>​	5.1 如果强制使用重量级锁，走向<code>InterpreterRuntime::monitorenter</code>。</p>
+<p>​	5.2 如果不强制使用，修改锁对象头的Mark Word为无锁状态（001），然后复制到线程T1的Lock Record中，然后使用CAS将锁对象头的Mark Word修改为指向Lock Record的指针（定义中的轻量锁加锁前/释放锁后，锁对象头的Mark Word低三位为001，也就是无锁状态；上锁时为00。<strong>从这一步开始往后，都算是轻量锁的逻辑！！！</strong>）</p>
+<p>​		5.2.1 CAS成功，<strong>锁升级为轻量级锁</strong>。</p>
+<p>​		5.2.2 如果CAS失败</p>
+<p>​		5.2.2.1 如果是锁重入，则将空闲的<code>Lock Record</code>的<code>Displaced Mark Word</code>设置为null，起到一个锁重入计数的作用。</p>
+<p>​		5.2.2.2 不是锁重入，说明还有锁竞争，锁撤销+锁升级：<code>InterpreterRuntime::monitorenter</code>。</p>
+<p>以上是偏向锁加锁的流程（包括部分轻量级锁的加锁流程），如果<strong>禁用偏向锁||当前锁已偏向其他线程||Klass偏向模式关闭||epoch值过期||获取偏向锁的过程中存在其他锁竞争||</strong>，五种情况，都会进入到<code>InterpreterRuntime::monitorenter</code>方法， 在该方法中会对偏向锁撤销和升级。</p>
+<p>此时，如果另一个线程T2来访问<code>synchronized</code>同步块，尝试获取锁，它会发现Mark Word中的线程ID不是自己，再经历上述流程。</p>
+<h6 id="锁释放">锁释放</h6>
+<p>当T1<strong>释放偏向锁时（即退出同步块）</strong>（注意：<strong>释放偏向锁和下面的撤销偏向锁不是一个动作</strong>），并没有立即恢复Mark Word，Mark Word仍然保留着T1的线程ID。这种设计是为了优化：如果T1想要再次获取锁，无需CAS操作，只需要判断，即可再次持有锁。（源码，见轻量级锁的锁释放）</p>
+<h6 id="锁撤销-锁重偏向-锁升级">锁撤销、锁重偏向、锁升级</h6>
+<p><code>InterpreterRuntime::monitorenter</code>如果允许偏向锁，则走向<code>ObjectSynchronizer::fast_enter</code>，否则走向<code>ObjectSynchronizer::slow_enter</code>。</p>
+<pre><code class="language-cpp">//注意这个方法，是偏向锁、轻量级锁混用。
+//如果是轻量级锁，即使进入fast_enter也不会执行什么，主要看slow_enter。
+IRT_ENTRY_NO_ASYNC(void, InterpreterRuntime::monitorenter(JavaThread* thread, BasicObjectLock* elem))
+  ...
+  Handle h_obj(thread, elem-&gt;obj());
+  assert(Universe::heap()-&gt;is_in_reserved_or_null(h_obj()),
+         &quot;must be NULL or an object&quot;);
+  if (UseBiasedLocking) {
+    // Retry fast entry if bias is revoked to avoid unnecessary inflation
+    ObjectSynchronizer::fast_enter(h_obj, elem-&gt;lock(), true, CHECK);
+  } else {
+    ObjectSynchronizer::slow_enter(h_obj, elem-&gt;lock(), CHECK);
+  }
+  ...
+IRT_END
+
+void ObjectSynchronizer::fast_enter(Handle obj, BasicLock* lock, bool attempt_rebias, TRAPS) {
+ if (UseBiasedLocking) {
+    //如果是正常的Java线程，执行BiasedLocking::revoke_and_rebias方法
+    //如果是VM线程则会执行BiasedLocking::revoke_at_safepoint。
+    if (!SafepointSynchronize::is_at_safepoint()) {
+      //不在安全点，那么调用revoke_and_rebias
+      //attempt_rebias为true，可重偏向
+      BiasedLocking::Condition cond = BiasedLocking::revoke_and_rebias(obj, attempt_rebias, THREAD);
+      if (cond == BiasedLocking::BIAS_REVOKED_AND_REBIASED) {
+        return;
+      }
+    } else {
+      //在安全点，还可以动的线程就是VM thread了
+      //禁止锁偏向VM线程
+      assert(!attempt_rebias, &quot;can not rebias toward VM thread&quot;);
+      BiasedLocking::revoke_at_safepoint(obj);
+    }
+    assert(!obj-&gt;mark()-&gt;has_bias_pattern(), &quot;biases should be revoked by now&quot;);
+ }
+ //只要不是重偏向成功了，都要走slow_enter
+ slow_enter (obj, lock, THREAD) ;
+}
+</code></pre>
+<p>看比较关键的<code>revoke_and_rebias</code>。</p>
+<pre><code class="language-cpp">BiasedLocking::Condition BiasedLocking::revoke_and_rebias(Handle obj, bool attempt_rebias, TRAPS) {
+  
+  //断言，assert true，则会继续往下执行
+  //assert false 报错
+  //这个方法不能在安全点调用
+  assert(!SafepointSynchronize::is_at_safepoint(), &quot;must not be called while at safepoint&quot;);
+    
+  markOop mark = obj-&gt;mark();
+  if (mark-&gt;is_biased_anonymously() &amp;&amp; !attempt_rebias) {
+     //如果是匿名可偏向且attempt_rebias==false
+     //锁对象的hashcode方法被调用会出现这种情况
+     //需要撤销偏向锁，锁对象头Mark Word低三位被修改为001（设置为无锁状态）、更新GC年龄
+    markOop biased_value       = mark;
+    markOop unbiased_prototype = markOopDesc::prototype()-&gt;set_age(mark-&gt;age());
+    markOop res_mark = (markOop) Atomic::cmpxchg_ptr(unbiased_prototype, obj-&gt;mark_addr(), mark);
+    //返回BIAS_REVOKED，后续要走slow_enter
+    if (res_mark == biased_value) {
+      return BIAS_REVOKED;
+    }
+  } else if (mark-&gt;has_bias_pattern()) {
+    // 锁对象头Mark Word低三位为101，也就是锁已经偏向某个线程，会走到这里
+    Klass* k = obj-&gt;klass();
+    markOop prototype_header = k-&gt;prototype_header();
+    //code 1： 如果对应Klass关闭了偏向模式
+    if (!prototype_header-&gt;has_bias_pattern()) {
+      markOop biased_value       = mark;
+      //把Klass#prototype_header设置给当前锁对象头的Mark Word，设置为无锁状态
+      markOop res_mark = (markOop) Atomic::cmpxchg_ptr(prototype_header, obj-&gt;mark_addr(), mark);
+      assert(!(*(obj-&gt;mark_addr()))-&gt;has_bias_pattern(), &quot;even if we raced, should still be revoked&quot;);
+      //返回BIAS_REVOKED，后续要走slow_enter
+      return BIAS_REVOKED;
+    //code 2： 如果epoch过期
+    } else if (prototype_header-&gt;bias_epoch() != mark-&gt;bias_epoch()) {
+      if (attempt_rebias) {
+        //code 2.1 如果允许重偏向
+        assert(THREAD-&gt;is_Java_thread(), &quot;&quot;);
+        markOop biased_value       = mark;
+        markOop rebiased_prototype = markOopDesc::encode((JavaThread*) THREAD, mark-&gt;age(), prototype_header-&gt;bias_epoch());
+        //通过CAS操作，将本线程的 ThreadID 、时间戳、GC年龄尝试写入对象头中
+        markOop res_mark = (markOop) Atomic::cmpxchg_ptr(rebiased_prototype, obj-&gt;mark_addr(), mark);
+        if (res_mark == biased_value) {
+          //不用走slow_enter
+          return BIAS_REVOKED_AND_REBIASED;
+        }
+      } else {
+        //code 2.2 如果不允许重偏向，那么就撤销偏向，
+        //锁对象Mark Word改为无锁状态(为后续走slow_enter做铺垫，准备升级轻量锁)
+        //锁对象头Mark Word低三位被修改为001、更新GC年龄
+        markOop biased_value       = mark;
+        markOop unbiased_prototype = markOopDesc::prototype()-&gt;set_age(mark-&gt;age());
+        markOop res_mark = (markOop) Atomic::cmpxchg_ptr(unbiased_prototype, obj-&gt;mark_addr(), mark);
+        if (res_mark == biased_value) {
+          //返回BIAS_REVOKED，后续要走slow_enter
+          return BIAS_REVOKED;
+        }
+      }
+    }
+  }
+  //执行到这里有以下两种情况：
+  //1.对象低三位不是101,可能用于应对轻量级锁
+  //2.对象低三位是101，但是上面的CAS操作失败了
+  //code 3：启发式处理
+  HeuristicsResult heuristics = update_heuristics(obj(), attempt_rebias);
+  if (heuristics == HR_NOT_BIASED) {
+    //情况1
+    //低三位不是101，直接返回状态，后续走slow_enter
+    return NOT_BIASED;
+  } else if (heuristics == HR_SINGLE_REVOKE) {
+    //处理情况2
+    //code 4：撤销单个线程（最常见情况！！！！！）
+    //最常见情况！！！！！
+    //最常见情况！！！！！
+    //最常见情况！！！！！
+    //一般有：T1持有偏向锁L，T2想竞争；T1/T2线程调用锁hashcode方法
+    Klass *k = obj-&gt;klass();
+    markOop prototype_header = k-&gt;prototype_header();
+    if (mark-&gt;biased_locker() == THREAD &amp;&amp;
+        prototype_header-&gt;bias_epoch() == mark-&gt;bias_epoch()) {
+      // mark-&gt;biased_locker() == THREAD 说明是当前线程持有这个锁  
+      // 走到这里说明需要撤销的是偏向当前线程的锁
+      // 在当前线程调用Object#hashcode方法时会走到这一步
+      // 那么只要遍历当前线程的栈就好了，所以不需要等到safepoint再撤销。
+      ResourceMark rm;
+      if (TraceBiasedLocking) {
+        tty-&gt;print_cr(&quot;Revoking bias by walking my own stack:&quot;);
+      }
+      //注意这里的revoke_bias方法，不会在safepoint调用
+      BiasedLocking::Condition cond = revoke_bias(obj(), false, false, (JavaThread*) THREAD);
+      ((JavaThread*) THREAD)-&gt;set_cached_monitor_info(NULL);
+      assert(cond == BIAS_REVOKED, &quot;why not?&quot;);
+      return cond;
+    } else {
+      // 撤销偏向失败，必须在safepoint调用revoke_bia方法
+      // 下面代码最终会在safepoint调用revoke_bias方法，必然会走slow_enter
+      VM_RevokeBias revoke(&amp;obj, (JavaThread*) THREAD);
+      VMThread::execute(&amp;revoke);
+      return revoke.status_code();
+    }
+  }
+	
+  assert((heuristics == HR_BULK_REVOKE) ||
+         (heuristics == HR_BULK_REBIAS), &quot;?&quot;);
+   //code5：批量撤销、批量重偏向的逻辑，在safepoint触发
+  VM_BulkRevokeBias bulk_revoke(&amp;obj, (JavaThread*) THREAD,
+                                (heuristics == HR_BULK_REBIAS),
+                                attempt_rebias);
+  VMThread::execute(&amp;bulk_revoke);
+  return bulk_revoke.status_code();
+}
+</code></pre>
+<p>code 4情况一般发生于：</p>
+<p>锁已经偏向线程T1：</p>
+<p><strong>如果是T1调用<code>Object#hashcode</code></strong>，只要遍历T1的栈就能拿到<code>Lock Record</code>，可以直接调用<code>revoke_bias</code>，不需要等到<code>safepoint</code>再撤销。</p>
+<p><strong>此时线程T2尝试获取锁</strong>，则撤销请求会被push到<code>VM Thread</code>中等到<code>safepoint</code>的时候再执行。</p>
+<p><code>VMThread</code>内部维护了一个<code>VMOperationQueue</code>类型的队列，用于保存内部提交的VM线程操作VM_operation。GC、偏向锁的撤销等操作都是在这里被执行。</p>
+<p><code>revoke_bias</code>方法：</p>
+<pre><code class="language-cpp">static BiasedLocking::Condition revoke_bias(oop obj, bool allow_rebias, bool is_bulk, JavaThread* requesting_thread) {
+  //obj是锁对象
+  markOop mark = obj-&gt;mark();
+  // 如果没有开启偏向模式，则直接返回NOT_BIASED
+  if (!mark-&gt;has_bias_pattern()) {
+    ...
+    return BiasedLocking::NOT_BIASED;
+  }
+
+  uint age = mark-&gt;age();
+  // 构建两个mark word，一个是匿名偏向模式（101），一个是无锁模式（001）
+  markOop   biased_prototype = markOopDesc::biased_locking_prototype()-&gt;set_age(age);
+  markOop unbiased_prototype = markOopDesc::prototype()-&gt;set_age(age);
+
+  ...
+  //获取当前锁对象头Mark Word中存的 线程ID
+  JavaThread* biased_thread = mark-&gt;biased_locker();
+  ...
+
+  // code 1：判断偏向线程是否还存活
+  bool thread_is_alive = false;
+  // 如果当前线程就是偏向线程，那么存活 
+  if (requesting_thread == biased_thread) {
+    thread_is_alive = true;
+  } else {
+     // 否则遍历当前jvm的所有线程，如果能找到，则说明偏向的线程还存活
+    for (JavaThread* cur_thread = Threads::first(); cur_thread != NULL; cur_thread = cur_thread-&gt;next()) {
+      if (cur_thread == biased_thread) {
+        thread_is_alive = true;
+        break;
+      }
+    }
+  }
+  // 如果偏向的线程已经不存活了
+  if (!thread_is_alive) {
+    // 允许重偏向则将对象mark word设置为匿名偏向状态，否则设置为无锁状态
+    if (allow_rebias) {
+      obj-&gt;set_mark(biased_prototype);
+    } else {
+      obj-&gt;set_mark(unbiased_prototype);
+    }
+    ...
+    return BiasedLocking::BIAS_REVOKED;
+  }
+
+  //线程还存活则遍历线程栈中所有的Lock Record
+   
+  //cached_monitor_info 保存了这个线程当前持有的所有锁的快照
+  //每个条目 (MonitorInfo) 记录「锁定的对象 + 栈上对应的 lock record + 附加标志」
+  GrowableArray&lt;MonitorInfo*&gt;* cached_monitor_info = get_or_compute_monitor_info(biased_thread);
+  BasicLock* highest_lock = NULL;
+  for (int i = 0; i &lt; cached_monitor_info-&gt;length(); i++) {
+    MonitorInfo* mon_info = cached_monitor_info-&gt;at(i);
+    // 这个锁对象 等于 当前锁对象吗
+    if (mon_info-&gt;owner() == obj) {
+      //等于，说明当前线程存活的同时，还持有锁（在同步块内）
+      ...
+      //此时需要升级为轻量级锁，存在锁竞争，requesting_thread想要这个锁
+      //直接修改偏向线程栈中的Lock Record：
+      //为了处理锁重入的case
+      //创建一个Mark Word为null
+      markOop mark = markOopDesc::encode((BasicLock*) NULL);
+      //获得当前锁对象指向的Lock Record
+      highest_lock = mon_info-&gt;lock();
+      //设置其Displaced Mark Word 为刚刚创建的Mark Word
+      //注意这里是循环，如果出现锁重入，mon_info-&gt;owner() == obj会不止成立一次
+      //为了符合轻量锁重入的语义，那么就得把非栈顶（最外层锁）的Lock Record Displaced Mark Word，设置为null
+      //那么循环结束后，highest_lock就是栈上离当前执行点最近、最“高”的lock，也是锁重入最外层的
+      highest_lock-&gt;set_displaced_header(mark);
+    } else {
+      ...
+    }
+  }
+  if (highest_lock != NULL) {
+    // 设置Lock Record Displaced Mark Word为无锁状态
+    // 然后将obj锁对象的mark word设置为指向该Lock Record的指针
+    highest_lock-&gt;set_displaced_header(unbiased_prototype);
+    obj-&gt;release_set_mark(markOopDesc::encode(highest_lock));
+    ...
+  } else {
+    // 走到这里说明线程存活，但是不在同步块中
+    ...
+    if (allow_rebias) {
+       //设置为匿名偏向状态
+      obj-&gt;set_mark(biased_prototype);
+    } else {
+      // 将mark word设置为无锁状态
+      obj-&gt;set_mark(unbiased_prototype);
+    }
+  }
+
+  return BiasedLocking::BIAS_REVOKED;
+}
+</code></pre>
+<ol>
+<li>
+<p>查看偏向的线程T1是否存活：如果已经不存活了，则直接<strong>撤销偏向锁：如果允许重偏向，那么撤销到匿名可偏向状态，允许公平竞争；不允许重偏向，那么撤销到无锁状态。</strong>（JVM维护了一个链表存放所有存活的线程，通过遍历该链表判断某个线程是否存活）</p>
+</li>
+<li>
+<p>如果T1存活，去判断线程T1是否还在同步块中：</p>
+<p>如果不在，则撤销偏向锁：如果允许重偏向，那么撤销到匿名可偏向状态，允许公平竞争；不允许重偏向，那么撤销到无锁状态。</p>
+<p><strong>如果在，执行3</strong>。</p>
+<p>（这里<strong>判断是否在同步块的方法</strong>：在偏向锁的获取中，每次进入同步块的时候都会在栈中找到第一个可用（即栈中最高的）的<code>Lock Record</code>，将其obj字段指向锁对象。每次解锁的时候都会把最低的相关的<code>Lock Record</code>移除掉，所以可以<strong>通过遍历线程栈中的<code>Lock Record</code>来判断是否还在同步块中。轻量级锁的重入也是基于<code>Lock Record</code>的计数来判断</strong>）</p>
+</li>
+<li>
+<p>升级为轻量级锁：将偏向线程所有相关<code>Lock Record</code>的<code>Displaced Mark Word</code>设置为null，再将最高位的<code>Lock Record</code>的<code>Displaced Mark Word</code> 设置为无锁状态，然后将锁对象头Mark Word指向最高位的<code>Lock Record</code>（和偏向锁上锁最后的思路一样，但是这里没有用到CAS指令，因为是<strong>在<code>safepoint</code>/当前线程操作自己栈不用等到安全点</strong>），T1锁升级。</p>
+</li>
+</ol>
+<h6 id="补充-2">补充</h6>
+<p>当T2请求偏向T1的锁时，如果没有触发到批量重偏向/批量撤销的阈值（由<code>update_heuristics</code>方法确定），那锁对象头Mark Word会被撤销为无锁状态；如果T1还在临界区中，锁会升级为轻量级锁。在之后的<a href="http://hg.openjdk.java.net/jdk8u/jdk8u/hotspot/file/9ce27f0a4683/src/share/vm/runtime/synchronizer.cpp#l234">slow_enter</a>中（下面介绍），如果锁对象是无锁状态，则会升级为轻量级锁；如果为轻量级锁，升级为重量级锁。</p>
+<p>而如果到达了批量重偏向的阈值，则会触发<strong>批量重偏向</strong>：</p>
+<ol>
+<li>
+<p>更新类的 epoch 字段：</p>
+<ul>
+<li>每个类（<code>Klass</code>）的 <code>prototype_header</code> 中包含一个 <code>bias_epoch</code>（偏向纪元）。</li>
+<li>执行 <code>incr_bias_epoch()</code> 将 epoch 加 1。</li>
+<li>这个 epoch 相当于一个“版本号”，用于标识当前有效的偏向状态。</li>
+</ul>
+</li>
+<li>
+<p>遍历所有 Java 线程的栈：</p>
+<ul>
+<li>对每个线程，获取其持有的  synchronized 锁对象。</li>
+<li>如果某个锁对象：
+<ul>
+<li>属于当前类（<code>owner-&gt;klass() == k_o</code>）</li>
+<li>且仍处于偏向模式（<code>mark-&gt;has_bias_pattern()</code>）</li>
+</ul>
+</li>
+<li>则将其 mark word 中的 <code>bias_epoch</code> 更新为新的 epoch（<code>cur_epoch</code>）。</li>
+<li><strong>注意</strong>：这里 <strong>并没有改变偏向的线程 ID</strong>，只是更新了 epoch。</li>
+</ul>
+<blockquote>
+<p><strong>关键点</strong>：通过更新 epoch，使得旧的偏向记录“过期”。后续如果该对象被新线程访问，会因为 epoch 不匹配而触发 <strong>轻量级重偏向（无需撤销）</strong>，从而快速将偏向权转移给新线程。</p>
+</blockquote>
+</li>
+<li>
+<p>对当前对象 o 尝试重偏向（revoke_bias）：</p>
+<ul>
+<li>调用 <code>revoke_bias(o, attempt_rebias_of_object &amp;&amp; ..., true, requesting_thread)</code>。</li>
+<li>如果 <code>attempt_rebias_of_object</code> 为 true（通常是因为当前请求线程希望获得偏向），且类仍支持偏向（<code>has_bias_pattern()</code>），则会将对象 o 的偏向设置为当前线程（requesting_thread）。</li>
+<li>这一步是 <strong>真正将当前对象偏向给新线程</strong>。</li>
+</ul>
+</li>
+</ol>
+<p>而如果到达了批量撤销的阈值，则会触发<strong>批量撤销</strong>：</p>
+<ol>
+<li>
+<p>关闭Klass的偏向模式：</p>
+<ul>
+<li>调用 <code>klass-&gt;set_prototype_header(markOopDesc::prototype())</code>。</li>
+<li><code>markOopDesc::prototype()</code> 返回一个 <strong>无偏向模式</strong> 的标准 mark word（通常是无锁状态，hash 为 0）。</li>
+<li>此后，该类的新创建对象 <strong>默认不再启用偏向锁</strong>。</li>
+</ul>
+</li>
+<li>
+<p>遍历所有线程的栈，撤销每个该类实例的偏向：</p>
+<ul>
+<li>获取其持有的  synchronized 锁对象：
+<ul>
+<li>如果对象属于该Klass 且 当前处于偏向模式</li>
+<li>调用 <code>revoke_bias(owner, false, true, ...)</code>，<strong>强制撤销偏向</strong>。</li>
+<li><code>revoke_bias(..., false, ...)</code> 表示 <strong>不尝试重偏向</strong>，直接撤销。</li>
+</ul>
+</li>
+<li>撤销后，对象可能进入 <strong>无锁</strong> 或 <strong>轻量级锁</strong> 状态（取决于是否被其他线程持有）。</li>
+</ul>
+</li>
+<li>
+<p>撤销当前对象 o 的偏向：</p>
+<ul>
+<li>
+<p>同样调用 <code>revoke_bias(o, false, true, ...)</code>，确保当前对象也不再偏向。</p>
+</li>
+<li>
+<p>因为走的是revoke_bias：如果T1还在临界区中，锁会升级为轻量级锁，在slow_enter中升级为重量级锁；如果T1不在临界区中，锁被撤销为无锁状态，在slow_enter中升级为轻量级锁。</p>
+</li>
+</ul>
+</li>
+</ol>
+<p>也就是说，<strong>如果一个锁已经偏向线程T1，当线程T2尝试获得该锁时，无论线程A是什么状态，该锁都会升级成轻量级锁或重量级锁（不考虑重偏向的情况）</strong>。</p>
+<h6 id="优点">优点</h6>
+<p>加锁和解锁不需要额外的消耗，和执行非同步方法比仅存在极小的差距。</p>
+<h6 id="缺点">缺点</h6>
+<p>如果遇到大量锁竞争，会消耗很大的资源，因为需要来到安全点，暂停相关线程，撤销偏向锁。</p>
+<h5 id="轻量级锁">轻量级锁</h5>
+<p>目的：在<strong>竞争程度很低</strong>（即线程交替执行同步块，多个线程尽可能在不同时段获取同一把锁）的情况下，避免直接调用操作系统层面的重量级互斥锁，减少用户态到内核态的切换开销。</p>
+<h6 id="加锁轻量级锁的由来">加锁/轻量级锁的由来</h6>
+<pre><code class="language-cpp">CASE(_monitorenter): {
+  oop lockee = STACK_OBJECT(-1);
+  ...
+  if (entry != NULL) {
+   ...
+   // 上面省略的代码中如果CAS操作失败也会调用到InterpreterRuntime::monitorenter
+
+    // traditional lightweight locking
+    // false走轻量级锁逻辑
+    // 这是偏向锁、轻量锁混用的代码
+    // T1持有偏向锁A，T2争夺A，CAS必然失败，走向InterpreterRuntime::monitorenter
+    // T1持有轻量锁B，T2争夺B，CAS可能成功，因为T1此时可能释放了锁
+    if (!success) {
+      
+      //lockee是锁对象，创建一个以其Mark Word作为蓝本的无锁状态Mark Word
+      //然后写入Lock Record的Displaced Mark Word
+      markOop displaced = lockee-&gt;mark()-&gt;set_unlocked();
+      entry-&gt;lock()-&gt;set_displaced_header(displaced);
+        
+      bool call_vm = UseHeavyMonitors;
+      //CAS操作，锁对象头现在的Mark Word 修改为 指向Lock Record的指针
+      //这里还有需要注意的！：
+	  //轻量级锁的锁标志位为 00，转换为数字后就是 4 的倍数。
+      //比如 0100 表示 4， 1000 表示 8。
+	  //如果 Lock Record 的地址是均为 4 的倍数，那么设置完 Lock Record 地址后，
+      //Mark Word 的末两位值就是 00 了，就是说一个操作完成了两件事：
+	  //第一件事情: 将锁对象头的Mark Word修改成指向Lock Record的指针
+	  //第二件事情: 因为Lock Record的地址 均为4的倍数 ,即 锁标志位修改为00
+      if (call_vm || Atomic::cmpxchg_ptr(entry, lockee-&gt;mark_addr(), displaced) != displaced) {
+        // 如果锁对象是偏向锁，CAS必然不成功:
+        // 偏向锁，锁对象的Mark Word低三位是101，刚刚构建的Mark Word低三位是001，CAS必然失败，只能走向锁升级。
+          
+        // 如果锁对象是无锁状态/轻量级锁，CAS有可能成功。
+        // 如果成功，说明此时锁对象已经被释放，可以获取
+        // 如果失败，说明此时锁对象仍然被持有，只能走向判断是否重入或者锁升级
+        // 这里是判断是否是轻量锁重入(没有偏向锁，偏向锁的重入判断在上方代码)
+        if (!call_vm &amp;&amp; THREAD-&gt;is_lock_owned((address) displaced-&gt;clear_lock_bits())) {
+          // 如果是锁重入，则直接将Displaced Mark Word设置为null
+          // 因为轻量级锁重入是使用lock record的数量来计入的
+          entry-&gt;lock()-&gt;set_displaced_header(NULL);
+        } else {
+          CALL_VM(InterpreterRuntime::monitorenter(THREAD, entry), handle_exception);
+        }
+      }
+    }
+    UPDATE_PC_AND_TOS_AND_CONTINUE(1, -1);
+  } else {
+    istate-&gt;set_msg(more_monitors);
+    UPDATE_PC_AND_RETURN(0); // Re-execute
+  }
+}
+</code></pre>
+<p><strong>如果没有开启偏向锁</strong>，就会走到<code>success == false</code>，因为<strong>锁对象一开始就是无锁状态（001）</strong>，<strong>这时候CAS也可以成功</strong>，那么上锁一开始就是轻量级锁：</p>
+<p>线程T1在栈帧中找到空闲的<code>Lock Record</code>。</p>
+<p>把锁对象头的Mark Word修改为无锁状态，复制到线程T1 Lock Record中。</p>
+<p>通过CAS，把entry（Lock Record）的指针 修改到 锁对象头的Mark Word中。</p>
+<p>（后续恢复锁对象头的Mark Word，<strong>期望</strong>锁对象头的Mark Word中有T1 Lock Record的指针，<strong>交换值</strong>是无锁状态的原Mark Word）</p>
+<p>如果CAS成功，线程T1就获得了轻量级锁。</p>
+<p>如果CAS失败，说明锁对象头的Mark Word并非无锁状态了，锁已经被持有了，分两种情况：</p>
+<ol>
+<li>
+<p>如果锁对象头的Mark Word中的指针指向当前线程T1的Lock Record，代表这是一次锁重入。就把刚创建的<code>Lock Record</code>（中的<code>Displaced Mark Word</code>字段）设置为null，起到了一个重入计数器的作用。然后结束。</p>
+</li>
+<li>
+<p>说明至少有两条线程在竞争锁，锁需要升级，走到<code>InterpreterRuntime::monitorenter</code>。</p>
+</li>
+</ol>
+<p><strong>如果开启了偏向锁</strong>：</p>
+<p>见上述的偏向锁，排除重偏向的情况，存在<strong>当前锁已偏向其他线程||Klass偏向模式关闭||epoch值过期||获取偏向锁的过程中存在其他锁竞争||</strong>，四种情况，都会进入到<code>InterpreterRuntime::monitorenter</code>方法， 在该方法中会对偏向锁撤销和升级，即可得到轻量级锁。<code>InterpreterRuntime::monitorenter</code>又会走到<code>fast_enter</code>、<code>slow_enter</code>。</p>
+<pre><code class="language-cpp">//注意这个方法，是偏向锁、轻量级锁混用。
+//如果是轻量级锁，即使进入fast_enter也不会执行什么，主要看slow_enter。
+IRT_ENTRY_NO_ASYNC(void, InterpreterRuntime::monitorenter(JavaThread* thread, BasicObjectLock* elem))
+  ...
+  Handle h_obj(thread, elem-&gt;obj());
+  assert(Universe::heap()-&gt;is_in_reserved_or_null(h_obj()),
+         &quot;must be NULL or an object&quot;);
+  if (UseBiasedLocking) {
+    // Retry fast entry if bias is revoked to avoid unnecessary inflation
+    ObjectSynchronizer::fast_enter(h_obj, elem-&gt;lock(), true, CHECK);
+  } else {
+    ObjectSynchronizer::slow_enter(h_obj, elem-&gt;lock(), CHECK);
+  }
+  ...
+IRT_END
+</code></pre>
+<p><code>fast_enter</code>的流程在偏向锁的锁撤销中已经分析过。主要是调用<code>revoke_and_rebias</code>方法，其核心逻辑为：</p>
+<p>假设T2竞争偏向T1的锁。此时不在<code>safepoint</code>，如果当前锁<code>Mark Word</code>低三位是101，不允许重偏向，先进行锁撤销，把锁对象改为无锁状态。</p>
+<p>如果锁撤销成功，准备进入slow_enter；</p>
+<p>如果锁撤销失败，发起到<code>safepoint</code>执行<code>revoke_bias</code>的请求，那么等到<code>safepoint</code>时，T1存活且还持有锁在同步块中，将偏向线程所有相关<code>Lock Record</code>的<code>Displaced Mark Word</code>设置为null，再将T1最高位的<code>Lock Record</code>的<code>Displaced Mark Word</code> 设置为无锁状态，然后将锁对象头Mark Word指向T1最高位的<code>Lock Record</code>，此时T1持有的锁升级为轻量级锁，然后T2继续执行<code>slow_enter</code>。（此时，T2仍然无法获取到锁）</p>
+<p>来看<code>slow_enter</code>。</p>
+<pre><code class="language-cpp">void ObjectSynchronizer::slow_enter(Handle obj, BasicLock* lock, TRAPS) {
+  markOop mark = obj-&gt;mark();
+  assert(!mark-&gt;has_bias_pattern(), &quot;should not see bias pattern here&quot;);
+  // 如果是锁对象的Mark Word是无锁状态（001） (这个无锁判断是针对于偏向锁经过revoke_and_rebias后，变成无锁状态的)
+  if (mark-&gt;is_neutral()) {
+    //设置Lock Record的Displaced Mark Word字段为无锁状态（保存当前锁对象的mark word）
+    lock-&gt;set_displaced_header(mark);
+    //CAS 锁对象头Mark Word修改为 栈中Lock Record的指针
+    if (mark == (markOop) Atomic::cmpxchg_ptr(lock, obj()-&gt;mark_addr(), mark)) {
+      //如果成功 结束方法
+      TEVENT (slow_enter: release stacklock) ;
+      return ;
+    }
+  } else if (mark-&gt;has_locker() &amp;&amp; THREAD-&gt;is_lock_owned((address)mark-&gt;locker())) {
+    assert(lock != mark-&gt;locker(), &quot;must not re-lock the same lock&quot;);
+    assert(lock != (BasicLock*)obj-&gt;mark(), &quot;don't relock with same BasicLock&quot;);
+    // 如果是重入，则设置Lock Record的Displaced Mark Word为null
+    lock-&gt;set_displaced_header(NULL);
+    //结束方法
+    return;
+  }
+
+  ...
+  // 走到这一步说明 锁对象的Mark Word不是无锁状态，是轻量级锁，需要膨胀为重量级锁
+  // 注意这里 没有自旋，只要轻量级锁发生竞争，那么不管如何都会引起锁膨胀
+  lock-&gt;set_displaced_header(markOopDesc::unused_mark());
+  ObjectSynchronizer::inflate(THREAD, obj())-&gt;enter(THREAD);
+}
+</code></pre>
+<h6 id="锁释放-2">锁释放</h6>
+<p>这里的锁释放，偏向锁和轻量级锁是混用的。</p>
+<pre><code class="language-cpp">CASE(_monitorexit): {
+  oop lockee = STACK_OBJECT(-1);
+  CHECK_NULL(lockee);
+  // derefing's lockee ought to provoke implicit null check
+  // find our monitor slot
+  BasicObjectLock* limit = istate-&gt;monitor_base();
+  BasicObjectLock* most_recent = (BasicObjectLock*) istate-&gt;stack_base();
+  // 从低往高遍历栈的Lock Record
+  while (most_recent != limit ) {
+    // 如果Lock Record关联的是该锁对象
+    if ((most_recent)-&gt;obj() == lockee) {
+      BasicLock* lock = most_recent-&gt;lock();
+      //获得Displaced Mark Word
+      markOop header = lock-&gt;displaced_header();
+      // Lock Record释放锁对象
+      most_recent-&gt;set_obj(NULL);
+      // 如果是偏向锁，Lock Record释放锁对象就好了。
+      // 否则要走轻量级锁/重量级锁的释放流程
+      if (!lockee-&gt;mark()-&gt;has_bias_pattern()) {
+        bool call_vm = UseHeavyMonitors;
+        // header != NULL说明不是重入
+        // 则需要将Displaced Mark Word 恢复到锁对象头的Mark Word
+        if (header != NULL || call_vm) {
+          if (call_vm || Atomic::cmpxchg_ptr(header, lockee-&gt;mark_addr(), lock) != lock) {
+            // CAS失败或者是重量级锁则会走到这里，先不把锁对象释放
+            // 然后调用monitorexit方法
+            most_recent-&gt;set_obj(lockee);
+            CALL_VM(InterpreterRuntime::monitorexit(THREAD, most_recent), handle_exception);
+          }
+        }
+      }
+      //执行下一条命令
+      UPDATE_PC_AND_TOS_AND_CONTINUE(1, -1);
+    }
+    //处理下一条Lock Record
+    most_recent++;
+  }
+  // Need to throw illegal monitor state exception
+  CALL_VM(InterpreterRuntime::throw_illegal_monitor_state_exception(THREAD), handle_exception);
+  ShouldNotReachHere();
+}
+
+IRT_ENTRY_NO_ASYNC(void, InterpreterRuntime::monitorexit(JavaThread* thread, BasicObjectLock* elem))
+ 
+  Handle h_obj(thread, elem-&gt;obj());
+  ...
+  ObjectSynchronizer::slow_exit(h_obj(), elem-&gt;lock(), thread);
+  // Free entry. This must be done here, since a pending exception might be installed on
+  //Lock Record释放锁对象
+  elem-&gt;set_obj(NULL);
+  ...
+IRT_END
+</code></pre>
+<p><code>slow_exit</code>实际上调用了<code>fast_exit</code>。</p>
+<pre><code class="language-cpp">void ObjectSynchronizer::slow_exit(oop object, BasicLock* lock, TRAPS) {
+  fast_exit(object, lock, THREAD);s
+}
+void ObjectSynchronizer::fast_exit(oop object, BasicLock* lock, TRAPS) {
+  ...
+  markOop dhw = lock-&gt;displaced_header();
+  markOop mark;
+  if (dhw == NULL) {
+     // 重入锁，什么也不做
+   	 ...
+     return ;
+  }
+
+  mark = object-&gt;mark();
+  // 如果锁对象头Mark Word==Lock Record Displaced Mark Word
+  // 说明是轻量级锁，CAS替换对象头的mark word
+  if (mark == (markOop) lock) {
+     assert (dhw-&gt;is_neutral(), &quot;invariant&quot;);
+     if ((markOop) Atomic::cmpxchg_ptr (dhw, object-&gt;mark_addr(), mark) == mark) {
+        TEVENT (fast_exit: release stacklock);
+        return;
+     }
+  }
+  //走到这里说明是重量级锁或者解锁时发生了竞争，膨胀后调用重量级锁的exit方法。
+  ObjectSynchronizer::inflate(THREAD, object)-&gt;exit(true, THREAD);
+}
+</code></pre>
+<p>如果是轻量级锁，尝试CAS恢复锁对象的<code>Mark Word</code>。若解锁时有竞争导致CAS失败，会调用<code>inflate</code>方法进行重量级锁膨胀，升级到到重量级锁后再执行<code>exit</code>方法。</p>
+<h5 id="重量级锁">重量级锁</h5>
+<p>重量级锁通过对象内部的监视器（monitor）实现，其依赖于底层操作系统的<code>Mutex Lock</code>实现。容易出现额外的用户态到内核态切换的开销，以及线程上下文切换的开销。</p>
+<h6 id="加锁-锁膨胀">加锁、锁膨胀</h6>
+<p><code>slow_enter</code>获取轻量级锁未成功时，会在<code>inflate</code>中完成锁膨胀：</p>
+<pre><code class="language-cpp">void ObjectSynchronizer::slow_enter(Handle obj, BasicLock* lock, TRAPS) {
+	...
+  // 如果是锁对象的Mark Word是无锁状态(001)
+  if (mark-&gt;is_neutral()) {
+    //设置Lock Record的Displaced Mark Word字段为无锁状态
+    lock-&gt;set_displaced_header(mark);
+    //CAS 锁对象头Mark Word修改为 栈中Lock Record的指针
+    if (mark == (markOop) Atomic::cmpxchg_ptr(lock, obj()-&gt;mark_addr(), mark)){
+      //如果成功 结束方法
+      TEVENT (slow_enter: release stacklock) ;
+      return ;
+    }
+  } else if (mark-&gt;has_locker() &amp;&amp; THREAD-&gt;is_lock_owned((address)mark-&gt;locker())) {
+    ...
+    // 如果是重入，则设置Lock Record的Displaced Mark Word为null
+    lock-&gt;set_displaced_header(NULL);
+    //结束方法
+    return;
+  }
+
+  ...
+  // 走到这一步说明 锁对象的Mark Word不是无锁状态，是轻量级锁，需要膨胀为重量级锁
+  // 注意这里 没有自旋，只要轻量级锁发生竞争，那么不管如何都会引起锁膨胀
+  lock-&gt;set_displaced_header(markOopDesc::unused_mark());
+  ObjectSynchronizer::inflate(THREAD, obj())-&gt;enter(THREAD);
+}
+
+ObjectMonitor * ATTR ObjectSynchronizer::inflate (Thread * Self, oop object) {  
+  ...
+  for (;;) {
+      const markOop mark = object-&gt;mark();
+      assert (!mark-&gt;has_bias_pattern(), &quot;invariant&quot;)   
+      // mark是以下状态中的一种：
+      // *  Inflated（重量级锁状态）     - 直接返回
+      // *  Stack-locked（轻量级锁状态） - 膨胀
+      // *  INFLATING（膨胀中）    - 忙等待直到膨胀完成
+      // *  Neutral（无锁状态）      - 膨胀
+      // *  BIASED（偏向锁）       - 非法状态，在这里不会出现
+
+      // CASE: inflated
+      if (mark-&gt;has_monitor()){
+          // 已经是重量级锁状态了，直接返回
+          ObjectMonitor * inf = mark-&gt;monitor();
+          ...
+          return inf;
+      }
+      // CASE: inflation in progress
+      if (mark == markOopDesc::INFLATING()){
+         // 正在膨胀中，说明另一个线程正在进行锁膨胀，continue重试
+         TEVENT(Inflate: spin while INFLATING);
+         // 在该方法中会进行spin/yield/park等操作完成自旋动作 
+         ReadStableMark(object);
+         continue;
+      }
+      // 当前是轻量级锁
+      //见下
+	  if (mark-&gt;has_locker()) {  
+ 		...
+      }
+      // 无锁状态
+      // CASE: neutral
+      //见下
+      ...
+
+      ...
+      return m;
+}
+</code></pre>
+<p><code>inflate</code>主要是一个for循环，为了处理多线程同时调用<code>inflate</code>的情况。然后会根据锁对象的状态进行不同的处理：</p>
+<ul>
+<li>已经是重量级状态，说明膨胀已经完成，返回并继续执行<code>ObjectMonitor::enter</code>方法。</li>
+<li>如果是轻量级锁则需要进行膨胀操作。</li>
+<li>如果是膨胀中状态，则进行忙等待。</li>
+<li>如果是无锁状态则需要进行膨胀操作。</li>
+</ul>
+<h6 id="轻量级锁膨胀">轻量级锁膨胀</h6>
+<pre><code class="language-cpp"> 	// 当前是轻量级锁
+	if (mark-&gt;has_locker()) {  
+      // 1
+      // 当前轻量级锁状态，先分配一个ObjectMonitor对象，并初始化值
+      ObjectMonitor * m = omAlloc(Self);          
+      m-&gt;Recycle();
+      m-&gt;_Responsible  = NULL;
+      m-&gt;OwnerIsThread = 0;
+      m-&gt;_recursions   = 0;
+      m-&gt;_SpinDuration = ObjectMonitor::Knob_SpinLimit;   // Consider: maintain by type/class
+      // 2
+      // 将锁对象的mark word设置为INFLATING (0)状态 
+      markOop cmp = (markOop) Atomic::cmpxchg_ptr(markOopDesc::INFLATING(), object-&gt;mark_addr(), mark);
+      if (cmp != mark) {
+        //CAS失败 重试
+        omRelease(Self, m, true);
+        continue ;       // Interference -- just retry
+      }
+      // 3
+      // 设置header为lock record中的displaced mark word
+      markOop dmw = mark-&gt;displaced_mark_helper();
+      assert(dmw-&gt;is_neutral(), &quot;invariant&quot;);
+      // 设置monitor的字段
+      m-&gt;set_header(dmw);
+      // owner为 锁对象头指向的Lock Record
+      m-&gt;set_owner(mark-&gt;locker());
+      m-&gt;set_object(object);
+      ...
+      // 4
+      // 将锁对象头设置为重量级锁状态
+      object-&gt;release_set_mark(markOopDesc::encode(m));
+      ...
+      return m ;
+    }
+</code></pre>
+<ol>
+<li>调用<code>omAlloc</code>获取一个可用的<code>ObjectMonitor</code>对象。在<code>omAlloc</code>方法中会先从<strong>线程私有</strong>的<code>monitor</code>集合<code>omFreeList</code>中分配对象，如果<code>omFreeList</code>中已经没有<code>monitor</code>对象，则从<strong>JVM全局</strong>的<code>gFreeList</code>中分配一批<code>monitor</code>到<code>omFreeList</code>中；</li>
+<li>通过CAS尝试将Mark Word设置为<code>markOopDesc:INFLATING(0)</code>，标识当前锁正在膨胀中。如果CAS失败，说明同一时刻其它线程已经将Mark Word设置为<code>markOopDesc:INFLATING</code>，当前线程进行自旋等待锁膨胀完成。</li>
+<li>如果CAS成功，设置monitor的各个字段：设置<code>monitor</code>的header字段为<code>持有锁线程的Lock Record Displaced Mark Word</code>，owner字段为<code>Lock Record</code>，obj字段为锁对象等；</li>
+<li>设置锁对象头的<code>Mark Word</code>为重量级锁状态：即指向第一步分配的<code>monitor</code>对象。</li>
+</ol>
+<h6 id="无锁状态锁膨胀">无锁状态锁膨胀</h6>
+<pre><code class="language-cpp">  // 无锁状态
+  // CASE: neutral
+  // 分配以及初始化ObjectMonitor对象
+  ObjectMonitor * m = omAlloc (Self) ;
+  // prepare m for installation - set monitor to initial state
+  m-&gt;Recycle();
+  m-&gt;set_header(mark);
+  // owner为NULL
+  m-&gt;set_owner(NULL);
+  m-&gt;set_object(object);
+  m-&gt;OwnerIsThread = 1 ;
+  m-&gt;_recursions   = 0 ;
+  m-&gt;_Responsible  = NULL ;
+  m-&gt;_SpinDuration = ObjectMonitor::Knob_SpinLimit ;       // consider: keep metastats by type/class
+    // 用CAS修改锁对象头的mark word为重量级锁状态
+  if (Atomic::cmpxchg_ptr (markOopDesc::encode(m), object-&gt;mark_addr(), mark) != mark) {
+      // 不成功说明有另外一个线程在执行inflate，释放monitor对象
+      m-&gt;set_object (NULL) ;
+      m-&gt;set_owner  (NULL) ;
+      m-&gt;OwnerIsThread = 0 ;
+      m-&gt;Recycle() ;
+      omRelease (Self, m, true) ;
+      m = NULL ;
+      continue ;
+      // interference - the markword changed - just retry.
+      // The state-transitions are one-way, so there's no chance of
+      // live-lock -- &quot;Inflated&quot; is an absorbing state.
+  }
+</code></pre>
+<ol>
+<li>调用omAlloc分配一个ObjectMonitor对象</li>
+<li>初始化monitor对象</li>
+<li>设置monitor的header字段为当前锁对象头的mark word，owner字段为null，obj字段为锁对象</li>
+<li>设置锁对象头的mark word为重量级锁状态，即指向第一步分配的monitor对象</li>
+</ol>
+<p>可以看到轻量级锁膨胀和无锁状态膨胀的不同之处在于第2步，没有使用INFLATING标识。</p>
+<p>把 Mark Word CAS 为 INFLATING，是想作为“忙/占用（BUSY）”的标志，目的是减少重复膨胀，防止竞态导致对象 header在膨胀过程中“闪变/flicker”。</p>
+<p>其它尝试膨胀的线程看到 <code>INFLATING</code> 就自旋/等待，避免多个线程同时做膨胀（避免重复构造 monitor、双重安装等）。</p>
+<pre><code class="language-cpp">TEVENT(Inflate: spin while INFLATING)
+</code></pre>
+<h6 id="inflating">INFLATING</h6>
+<p><strong>无锁</strong>状态时：对象的 Mark Word只在对象头里。膨胀时直接把它复制到 monitor._header 再把 monitor 指针写回对象头即可；</p>
+<p><strong>轻量级锁</strong>：为了实现轻量级锁，此时“锁对象头原始 Mark Word”不在锁对象里，而在持有锁线程的Lock Record上——这就引入了竞态：持锁线程可能正准备 unlock 并把Lock Record Displaced Mark Word写回锁对象头；同时竞争线程因为重量级锁的语义，把<code>Monitor</code>指针修改到锁对象头<code>Mark Word</code>。如果两者并发，会导致 header 之间来回“闪变”。</p>
+<p>此时，Mark Word中存储的是指向<strong>重量级锁（Monitor）</strong> 的指针。</p>
+<p>膨胀完成之后，会调用<code>ObjectMonitor::enter</code>方法获得锁。</p>
+<pre><code class="language-cpp">void ATTR ObjectMonitor::enter(TRAPS) {
+  // 获取当前线程的指针
+  Thread * const Self = THREAD;
+  void * cur;
+  // owner为null代表无锁状态，如果能CAS设置成功，则当前线程直接获得锁
+  // CAS失败，cur得到_owner实际指向的值
+  cur = Atomic::cmpxchg_ptr (Self, &amp;_owner, NULL) ;
+  if (cur == NULL) {
+     ...
+     return;
+  }
+  // 如果是重入的情况
+  if (cur == Self) {
+     // TODO-FIXME: check for integer overflow!  BUGID 6557169.
+     _recursions ++;
+     return;
+  }
+  // 如果当前线程是拥有cur Lock Record的线程
+  // 即锁膨胀前持有轻量级锁的线程（轻量级锁膨胀时候，会将owner指向持有轻量级锁线程的Lock Record的指针）。
+  if (Self-&gt;is_lock_owned ((address)cur)) {
+    assert (_recursions == 0, &quot;internal state error&quot;);
+    // 重入计数重置为1/
+    _recursions = 1;
+    // 设置owner字段为当前线程（设置前owner是指向持有锁线程的Lock Re
+    OwnerIsThread = 1;
+    return;
+  }
+
+  ...
+  // 其他线程
+  // 在调用系统的同步操作之前，先尝试自旋获得锁
+  if (Knob_SpinEarly &amp;&amp; TrySpin (Self) &gt; 0) {
+     ...
+     //自旋的过程中获得了锁，则直接返回
+     Self-&gt;_Stalled = 0;
+     return;
+  }
+
+  ...
+
+  { 
+    ...
+
+    for (;;) {
+      jt-&gt;set_suspend_equivalent();
+      // 在该方法中调用系统同步操作
+      EnterI (THREAD);
+      ...
+    }
+    Self-&gt;set_current_pending_monitor(NULL);
+    
+  }
+
+  ...
+
+}
+</code></pre>
+<ol>
+<li>
+<p>当前是无锁、锁重入，简单操作后返回。</p>
+</li>
+<li>
+<p>当前线程是之前持有轻量级锁的线程，则为首次进入，设置recursions为1，owner为当前线程，该线程成功获得锁并返回。</p>
+</li>
+<li>
+<p>先<strong>自旋尝试</strong>获得锁，尽可能减少开销。</p>
+</li>
+<li>
+<p>进行同步操作，调用<code>EnterI</code>方法。</p>
+</li>
+</ol>
+<p>这里注意，轻量级锁膨胀成功时，会把owner字段设置为持有该锁的线程的<code>Lock Record</code>的指针，并在竞争时判断。这么做的原因是：为了方便进行重入的判断。如果锁膨胀直接把owner设置为线程指针，那么不好分清楚究竟是重入还是持锁线程第一次进入<code>ObjectMonitor::enter</code>。</p>
+<p>这里有个<strong>自旋</strong>操作，直接看<code>TrySpin</code>对应的方法：</p>
+<pre><code class="language-cpp">// TrySpin对应的方法
+int ObjectMonitor::TrySpin_VaryDuration (Thread * Self) {  
+    // Dumb, brutal spin.  Good for comparative measurements against adaptive spinning.
+    int ctr = Knob_FixedSpin;  // 固定自旋次数
+    if (ctr != 0) {
+        while (--ctr &gt;= 0) {
+            //CAS 使用无限循环来不断尝试获取锁
+            //如果锁当前未被持有，当前线程将尝试获取锁。如果成功，返回1；
+            //如果锁已被其他线程持有，或者在尝试获取锁的过程中锁被其他线程获取，则返回-1
+            if (TryLock (Self) &gt; 0) return 1;
+            SpinPause ();
+        }
+        return 0;
+    }
+    // 上一次自旋次数
+    for (ctr = Knob_PreSpin + 1; --ctr &gt;= 0; ) {
+      if (TryLock(Self) &gt; 0) {  // 尝试获取锁
+        // Increase _SpinDuration ...
+        // Note that we don't clamp SpinDuration precisely at SpinLimit.
+        // Raising _SpurDuration to the poverty line is key.
+        int x = _SpinDuration ;
+        if (x &lt; Knob_SpinLimit) {
+           if (x &lt; Knob_Poverty) x = Knob_Poverty ;
+           _SpinDuration = x + Knob_BonusB;
+        }
+        return 1;
+      }
+      ...
+</code></pre>
+<p>从方法名和注释可以看出，这就是自适应自旋，<strong>和网上说的轻量级锁CAS失败会自旋的说法并不一致</strong>。实际上，目前来看是<strong>只有重量级锁CAS失败会自旋</strong>。</p>
+<h6 id="objectmonitor">ObjectMonitor</h6>
+<p>每个重量级锁对象存在着一个<code>ObjectMonitor</code>对象与之关联。这个<code>ObjectMonitor</code>对象也称为<strong>管程</strong>或<strong>监视器锁</strong>。</p>
+<p>一个<code>ObjectMonitor</code>内部有以下几个关键字段：</p>
+<ul>
+<li><code>_owner</code>：指向当前持有锁的线程。</li>
+<li><code>_cxq</code>:一个链表。在多个线程同时竞争锁时，为了减少对 <code>_EntryList</code> 的操作竞争，这些线程会先通过 CAS 操作自旋地尝试入队到 <code>_cxq</code>。在入队时用<strong>头插（push front）+ CAS 重试</strong>，所以_cxq` 是一个后进先出（LIFO）的结构。</li>
+<li><code>_EntryList</code>：<strong>同步队列。<strong>一个链表，存放所有</strong>等待锁</strong>的线程。这些线程在尝试获取锁失败后，会进入阻塞状态，并被放入这个队列中。当持有锁的线程释放锁时，会从这个队列中唤醒一个或多个线程来重新竞争锁。</li>
+<li><code>_WaitSet</code>：**等待队列。**一个链表，存放所有调用了 <code>Object.wait()</code> 方法的线程。这些线程已经主动放弃了锁，并进入等待状态，直到被其他线程通过 <code>notify()</code> 或 <code>notifyAll()</code> 唤醒。被唤醒的线程会从 <code>_WaitSet</code> 转移到 <code>_EntryList</code> 中，重新参与锁竞争。</li>
+</ul>
+<p>其中<code>_cxq</code> ，<code>_EntryList</code> ，<code>_WaitSet</code>都是由<code>ObjectWaiter</code>组成的链表结构。<code>_cxq</code> 是“入口”队列，新来的竞争线程首先进入这里。<code>_EntryList</code> 是“待唤醒”队列，在锁释放时，JVM 会根据内部策略决定如何在这两个队列之间转移线程。</p>
+<h6 id="monitor等待">Monitor等待</h6>
+<pre><code class="language-cpp">void ATTR ObjectMonitor::EnterI (TRAPS) {  
+        // 尝试自旋
+    if (TrySpin (Self) &gt; 0) {
+        ...
+        return ;
+    }
+    ...
+    // 将线程封装成node节点中
+    ObjectWaiter node(Self) ;
+    Self-&gt;_ParkEvent-&gt;reset() ;
+    node._prev   = (ObjectWaiter *) 0xBAD ;
+    node.TState  = ObjectWaiter::TS_CXQ ;
+    // 将node节点插入到_cxq队列的头部，cxq是一个单向链表
+    ObjectWaiter * nxt ;
+    for (;;) {
+        node._next = nxt = _cxq ;
+        if (Atomic::cmpxchg_ptr (&amp;node, &amp;_cxq, nxt) == nxt) break ;
+        // CAS失败的话 再尝试获得锁，这样可以降低插入到_cxq队列的频率
+        if (TryLock (Self) &gt; 0) {
+            ...
+            return ;
+        }
+    }
+    
+    ...
+    // SyncFlags默认为0，如果没有其他等待的线程，则将_Responsible设置为自己
+    if ((SyncFlags &amp; 16) == 0 &amp;&amp; nxt == NULL &amp;&amp; _EntryList == NULL) {
+        Atomic::cmpxchg_ptr (Self, &amp;_Responsible, NULL) ;
+    }
+
+
+    TEVENT (Inflated enter - Contention) ;
+    int nWakeups = 0 ;
+    int RecheckInterval = 1 ;
+
+    for (;;) {
+		//C执行一次CAS尝试拿锁
+        if (TryLock (Self) &gt; 0) break ;
+        assert (_owner != Self, &quot;invariant&quot;) ;
+
+        ...
+
+        // park self
+        if (_Responsible == Self || (SyncFlags &amp; 1)) {
+            // 当前线程是_Responsible时，调用的是带时间参数的park
+            TEVENT (Inflated enter - park TIMED) ;
+            Self-&gt;_ParkEvent-&gt;park ((jlong) RecheckInterval) ;
+            // Increase the RecheckInterval, but clamp the value.
+            RecheckInterval *= 8 ;
+            if (RecheckInterval &gt; 1000) RecheckInterval = 1000 ;
+        } else {
+            //否则直接调用park挂起当前线程
+            TEVENT (Inflated enter - park UNTIMED) ;
+            Self-&gt;_ParkEvent-&gt;park() ;
+        }
+
+        if (TryLock(Self) &gt; 0) break ;
+
+        ...
+        
+        if ((Knob_SpinAfterFutile &amp; 1) &amp;&amp; TrySpin (Self) &gt; 0) break ;
+
+       	...
+        // 在释放锁时，_succ会被设置为EntryList或_cxq中的一个线程
+        if (_succ == Self) _succ = NULL ;
+
+        // Invariant: after clearing _succ a thread *must* retry _owner before parking.
+        OrderAccess::fence() ;
+    }
+
+    // 走到这里说明已经获得锁了
+	// 将当前线程的node从cxq或EntryList中移除
+    UnlinkAfterAcquire (Self, &amp;node) ;
+    if (_succ == Self) _succ = NULL ;
+	if (_Responsible == Self) {
+        _Responsible = NULL ;
+        OrderAccess::fence();
+    }
+    ...
+    return ;
+}
+</code></pre>
+<p>当一个线程尝试获得重量级锁且没有竞争到时，该线程会被封装成一个<code>ObjectWaiter</code>对象插入到<code>_cxq</code>的队首，然后调用<code>park</code>函数挂起当前线程，进入BLOCKED状态。（在Linux系统上，<code>park</code>函数底层调用的是gclib库的<code>pthread_cond_wait</code>，JDK的<code>ReentrantLock</code>底层也是用该方法挂起线程的。）</p>
+<p>当线程释放锁时，会根据唤醒策略，从<code>_cxq</code>或<code>_EntryList</code>中挑选一个线程作为<code>Heir presumptive</code>进行<code>unpark</code>唤醒。<code>Heir presumptive</code>被唤醒后会尝试获得锁，但<code>synchronized</code>是<strong>非公平锁</strong>，所以<code>Heir presumptive</code>不一定能获得锁。</p>
+<p><strong>如果线程获得锁后调用<code>Object#wait</code>方法，则会将线程加入到<code>_WaitSet</code>中，进入WAITING或TIMED_WAITING状态。当被<code>Object#notify</code>唤醒后，会将线程从<code>_WaitSet</code>移动到<code>_cxq</code>或<code>_EntryList</code>中去，进入BLOCKED状态。</strong></p>
+<p>需要注意的是，<strong>当调用一个锁对象的<code>wait</code>或<code>notify</code>方法时，若当前锁的状态是偏向锁或轻量级锁，则会先膨胀成重量级锁。</strong></p>
+<p><code>_Responsible</code>和<code>_succ</code>两个字段的作用：</p>
+<p>当竞争发生时，选取一个线程作为<code>_Responsible</code>，<code>_Responsible</code>线程调用的是有时间限制的<code>park</code>方法，其目的是防止出现<code>搁浅</code>现象。</p>
+<p><code>_succ</code>线程是<code>Heir presumptive</code>。</p>
+<h6 id="monitor释放">Monitor释放</h6>
+<pre><code class="language-cpp">void ATTR ObjectMonitor::exit(bool not_suspended, TRAPS) {
+    Thread * Self = THREAD ;
+    ...
+    // 处理异常以及其他情况
+
+    //释放锁
+    for (;;) {
+
+        if (Knob_ExitPolicy == 0) { //默认为0
+            //简单释放锁策略 
+            OrderAccess::release_store(&amp;_owner, (void*)NULL);   
+            // drop the lock
+            OrderAccess::storeload();//内存屏障，让其它线程看到释放动作
+            if ((intptr_t(_EntryList)|intptr_t(_cxq)) == 0 || _succ != NULL) {
+                //若没有等待者（_EntryList 和 _cxq 都为空）或已存在 successor (_succ != NULL)
+                //直接返回 —— 完成释放。
+                TEVENT(Inflated exit - simple egress);
+                return;
+            }
+            TEVENT(Inflated exit - complex egress);
+            //但释放到唤醒等待者之间存在一个短暂窗口：其他线程可能在你释放后马上抢到锁或注册为 successor。
+            //为了处理这种 race，这里会做一次CAS
+            if (!Atomic::replace_if_null(THREAD, &amp;_owner)) {
+                //说明有线程获取到了锁
+                //那么直接返回
+                return;
+            }
+            TEVENT(Exit - Reacquired);
+        } else {
+            //其他释放锁策略
+            ...
+        }
+
+        ObjectWaiter * w = NULL ;
+        // 根据QMode的不同会有不同的唤醒策略，默认为0
+        // Knob_QMode 是一个全局变量，
+        // 它可以由 Intel 的 PIN 工具框架定义的，通过在 PIN 工具代码中使用命令行参数 -qmode 设置其值。
+        int QMode = Knob_QMode ;
+
+        if (QMode == 2 &amp;&amp; _cxq != NULL) {
+            // QMode == 2 : cxq中的线程有更高优先级
+            // 直接唤醒cxq的队首线程，是等待时间最长的线程，也就是队列中第一个入队的
+            // 唯一会提前返回的
+            return ;
+        }
+
+        if (QMode == 3 &amp;&amp; _cxq != NULL) {
+            // QMode == 3 将cxq中的元素插入到EntryList的队尾
+            //继续执行
+            ...
+        }
+
+        if (QMode == 4 &amp;&amp; _cxq != NULL) {
+            // QMode == 4 将cxq插入到EntryList的队首
+            //继续执行
+            ...
+        }
+
+		//QMode = 0，1，3，4会执行到这
+        w = _EntryList  ;
+        if (w != NULL) {
+			// 如果EntryList不为空，则直接唤醒EntryList的队首元素
+            assert (w-&gt;TState == ObjectWaiter::TS_ENTER, &quot;invariant&quot;) ;
+            ExitEpilog (Self, w) ;
+            return ;
+        }
+
+		// EntryList为null，则处理cxq中的元素
+        w = _cxq ;
+        if (w == NULL) continue ;
+		
+        // 如果 _EntryList 为空但 _cxq != NULL，代码会用 CAS 安全地把 _cxq 取走（drain）
+        // 因为之后要将cxq的元素移动到EntryList，所以这里将cxq字段设置为null
+        for (;;) {
+            assert (w != NULL, &quot;Invariant&quot;) ;
+            ObjectWaiter * u = (ObjectWaiter *) Atomic::cmpxchg_ptr (NULL, &amp;_cxq, w) ;
+            if (u == w) break ;
+            w = u ;
+        }
+        TEVENT (Inflated exit - drain cxq into EntryList) ;
+		
+        //然后根据 QMode 进一步处理：
+        if (QMode == 1) {
+            // QMode == 1 : 将cxq中的元素转移到EntryList，并反转顺序
+            // cxq是LIFO，后进先出，现在翻转，那么改为FIFO
+            ObjectWaiter * s = NULL ;
+            ObjectWaiter * t = w ;
+            ObjectWaiter * u = NULL ;
+            while (t != NULL) {
+                guarantee (t-&gt;TState == ObjectWaiter::TS_CXQ, &quot;invariant&quot;) ;
+                t-&gt;TState = ObjectWaiter::TS_ENTER ;
+                u = t-&gt;_next ;
+                t-&gt;_prev = u ;
+                t-&gt;_next = s ;
+                s = t;
+                t = u ;
+            }
+            _EntryList  = s ;
+            assert (s != NULL, &quot;invariant&quot;) ;
+        } else {
+            // QMode == 0，3，4
+            // 将cxq中的元素转移到EntryList
+            _EntryList = w ;
+            ObjectWaiter * q = NULL ;
+            ObjectWaiter * p ;
+            for (p = w ; p != NULL ; p = p-&gt;_next) {
+                guarantee (p-&gt;TState == ObjectWaiter::TS_CXQ, &quot;Invariant&quot;) ;
+                p-&gt;TState = ObjectWaiter::TS_ENTER ;
+                p-&gt;_prev = q ;
+                q = p ;
+            }
+        }
+
+
+		// _succ不为null
+		// 说明已经有个继承人了，所以不需要当前线程去唤醒，减少线程上下文切换
+        if (_succ != NULL) continue;
+
+        w = _EntryList  ;
+		// 唤醒EntryList第一个元素
+        if (w != NULL) {
+            guarantee (w-&gt;TState == ObjectWaiter::TS_ENTER, &quot;invariant&quot;) ;
+            ExitEpilog (Self, w) ;
+            return ;
+        }
+    }
+}
+</code></pre>
+<ol>
+<li>设置owner为null，即释放锁，这个时刻其他的线程能获取到锁。这里是一个非公平锁的优化；</li>
+<li>如果当前没有等待的线程则直接返回就好了，因为不需要唤醒其他线程。或者如果说succ不为null，代表当前已经有个&quot;醒着的&quot;继承人线程，那当前线程不需要唤醒任何线程；</li>
+<li>当前线程重新获得锁，因为之后要操作<code>cxq</code>和<code>EntryList</code>队列以及唤醒线程；</li>
+<li>根据<code>QMode</code>的不同，会执行不同的唤醒策略。</li>
+</ol>
+<p>从<code>cxq</code>或<code>EntryList</code>中获取头节点，通过<code>ObjectMonitor::ExitEpilog</code>方法唤醒该节点对应的线程，唤醒操作最终由unpark完成。</p>
+<p>根据<code>QMode</code>的不同(默认为0)，有不同的处理方式：</p>
+<ul>
+<li><code>QMode</code>= 0：暂时什么都不做；</li>
+<li><code>QMode</code>= 2且<code>cxq</code>非空：取<code>cxq</code>队列队首的<code>ObjectWaiter</code>对象，调用<code>ExitEpilog</code>方法，该方法会唤醒线程，然后立即返回；</li>
+<li><code>QMode</code>= 3且<code>cxq</code>非空：把<code>cxq</code>队列插入到<code>EntryList</code>的尾部；</li>
+<li><code>QMode</code> = 4且<code>cxq</code>非空：把<code>cxq</code>队列插入到<code>EntryList</code>的头部；</li>
+</ul>
+<p>只有<code>QMode</code>=2的时候会提前返回，等于0、1、3、4的时继续执行：</p>
+<ol>
+<li>
+<p>如果<code>EntryList</code>的首元素非空，就取出来调用<code>ExitEpilog</code>方法，该方法会唤醒<code>ObjectWaiter</code>对象的线程，然后立即返回；</p>
+</li>
+<li>
+<p>如果<code>EntryList</code>的首元素为空，就将<code>cxq</code>的所有元素放入到<code>EntryList</code>中，然后再从<code>EntryList</code>中取出来队首元素执行<code>ObjectMonitor::ExitEpilog</code>方法，然后立即返回；</p>
+</li>
+<li>
+<p>被唤醒的线程，继续竞争<code>monitor</code>；</p>
+</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">QMode</th>
+<th style="text-align:left">策略描述</th>
+<th style="text-align:left">唤醒顺序</th>
+<th style="text-align:left">适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>0</strong></td>
+<td style="text-align:left">默认策略，优先唤醒 EntryList，为空时转移 cxq</td>
+<td style="text-align:left">EntryList FIFO</td>
+<td style="text-align:left">公平性较好</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>1</strong></td>
+<td style="text-align:left">反转 cxq 后设为 EntryList</td>
+<td style="text-align:left">反转后的顺序</td>
+<td style="text-align:left">特定优化场景</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>2</strong></td>
+<td style="text-align:left">直接唤醒 cxq 头节点</td>
+<td style="text-align:left">cxq LIFO</td>
+<td style="text-align:left">性能优化，减少操作</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>3</strong></td>
+<td style="text-align:left">cxq 转移到 EntryList 尾部</td>
+<td style="text-align:left">保持 FIFO</td>
+<td style="text-align:left">公平性最佳</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>4</strong></td>
+<td style="text-align:left">cxq 转移到 EntryList 头部</td>
+<td style="text-align:left">近似 LIFO</td>
+<td style="text-align:left">吞吐量优化</td>
+</tr>
+</tbody>
+</table>
+<h4 id="hashcode与锁">hashCode与锁</h4>
+<p>当一个对象已经计算过<code>hashCode</code>后，它就再也无法进入偏向锁状态了，下次加锁直接是轻量级。</p>
+<p>而当一个对象当前正处于偏向锁状态，计算其<code>hashCode</code>时，它的偏向状态会被立即撤销，并且会膨胀为重量级锁。<strong>计算并保存 identity-hash 必须把 hash 永久/持久地保存到对象的头上或与对象同寿命的地方</strong>，而轻量级锁使用的临时结构（Lock Record）存在于线程栈上，释放锁后就不存在了，不能满足“hash 要长期可见”的要求。</p>
+<h4 id="内核态-用户态切换与线程上下文切换">内核态、用户态切换与线程上下文切换</h4>
+<p><strong>用户态、内核态切换</strong>，<strong>线程上下文切换（context switch）</strong> 常被混用。</p>
+<p>但严格说 CPU 的上下文切换比单纯的模式切换更重。模式切换不一定伴随着上下文切换。但是<strong>线程上下文切换一定涉及内核态</strong>（需要内核调度）。</p>
+<p><strong>模式切换（mode switch）</strong></p>
+<ul>
+<li>只是权限层级的切换（用户态 → 内核态 → 用户态）。</li>
+<li>发生在：系统调用（read/write、nanosleep 等syscall）、硬件中断、异常（比如页面错误）时。</li>
+<li>开销：保存/恢复一些寄存器、切换到内核栈、做权限切换检查等（相对较轻，但非免费）。</li>
+</ul>
+<p><strong>线程上下文切换（context switch）</strong></p>
+<ul>
+<li>把 CPU 从一个线程/进程切到另一个，涉及保存当前线程的寄存器状态、加载下一个线程的寄存器、可能切换页表（地址空间）、刷新 TLB、内核调度决策等。</li>
+<li>比模式切换昂贵得多（通常几十到几百倍的 CPU 周期，且可能引起缓存/TLB 失效等间接成本）。</li>
+<li>发生在：线程阻塞（sleep、等待IO）、被抢占、线程主动让出，或者调度器决定切换。</li>
+</ul>
+<h5 id="竞争锁失败">竞争锁失败</h5>
+<p><strong>重量级锁</strong>，若经过自旋仍无法获得锁（尽可能停留在用户态），JVM 会把线程 T2 放入锁对象对应 Monitor 的等待队列，并<strong>调用阻塞原语</strong>以挂起线程T2（在Linux 实现中是调用 <code>futex</code> ；在 Windows 是 <code>WaitForSingleObject</code> / SRW 等）。</p>
+<p>这是一次 <strong>系统调用（syscall）</strong>：CPU 从用户态切到内核态去执行内核代码，核内把线程标记为不可运行，并从可运行队列移走到等待队列 —— 同时产生 <strong>线程上下文切换</strong>。</p>
+<h5 id="释放锁并唤醒等待者">释放锁并唤醒等待者</h5>
+<p>线程 T1 在释放锁时（<code>monitorExit</code>）发现有人等待，需要内核<strong>执行唤醒操作</strong>：把阻塞线程T2从等待队列移到可运行队列。</p>
+<p>这也是 syscall，同样触发模式切换（进入内核）并可能导致线程上下文切换（把 CPU 控制权交给被唤醒线程或其他线程）。</p>
+<h5 id="被唤醒线程重新尝试获取锁">被唤醒线程重新尝试获取锁</h5>
+<p>被唤醒的线程 T2 变为可运行，内核调度器在合适时机把它上下文切入 CPU。线程 T2 返回用户态并继续尝试拿到锁（可能再次 CAS 成功或再次被竞争）。</p>
+<h3 id="monitorenter和monitorexit指令">Monitorenter和Monitorexit指令</h3>
+<p>执行 <code>monitorenter</code> 指令就是线程试图去获取，<strong>synchronized想锁住的对象</strong>的 <code>Monitor</code> 的所有权，抢到了就是成功获取锁了；执行 <code>monitorexit</code> 指令则是释放了<code>Monitor</code>的所有权。每一个对象在同一时间只与一个<code>Monitor</code>相关联，而一个<code>Monitor</code>在同一时间只能被一个线程获得。</p>
+<p>每个<code>Monitor</code>有着一个记录着被锁次数的计数器。未被锁定的计数器为0，当一个线程获得对象的锁（执行<code>Monitorenter</code>）后，该对象的<code>Monitor</code>计数器自增变为 1 ；当<strong>同一个线程</strong>再次获得该对象的锁的时候，计数器再次自增。当同一个线程释放锁（执行<code>Monitorexit</code>指令）的时候，计数器再自减。当<strong>计数器为0的时候，锁将被释放，其他线程便可以获得锁。</strong></p>
+<p><code>monitorenter</code>：加锁。如果缓存失效就发起总线事务，读取最新数据。（被上一个持锁的线程修改后，缓存行失效）。</p>
+<p><code>monitorexit</code>：释放锁。线程在释放锁时，通过全屏障，刷新当前核心的Store Buffer到其缓存，同时使其他核心的缓存失效。（如果临界区内 <strong>没有实际修改任何共享变量</strong>，JVM 可能跳过更新操作以优化性能。对于存在修改的场景，无论修改是否涉及 <code>volatile</code> 变量，都必须强制更新）</p>
+<p>一个线程在尝试获得与这个对象相关联的<code>Monitor</code>的所有权的时候，<code>monitorenter</code>指令会发生如下情况之一：</p>
+<ul>
+<li>计数器为0，意味着目前还没有被获得，那这个线程就会立刻获得然后把锁计数器+1，一旦+1，别的线程再想获取，就需要等待；</li>
+<li>如果这个线程已经拿到了这个锁的所有权，又<strong>重入</strong>了这把锁，那锁计数器就会累加，变成2，并且随着重入的次数，会一直累加；</li>
+<li>这把锁已经被别的线程获取了，等待锁释放；</li>
+</ul>
+<blockquote>
+<p>什么是可重入？什么是可重入锁？</p>
+<p><strong>可重入</strong>：若一个程序或子程序可以“在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错”，则称其为可重入（reentrant或re-entrant）的。即当该子程序正在运行时，执行线程可以再次进入并执行它，仍然获得符合设计时预期的结果。与多线程并发执行的线程安全不同，可重入强调对单个线程执行时重新进入同一个子程序仍然是安全的。</p>
+<p><strong>可重入锁</strong>：又名递归锁，是指在同一个线程在外层方法获取锁的时候，再进入该线程的内层方法会自动获取锁（前提锁对象得是同一个对象或者同一个class），不会因为之前已经获取过还没释放而阻塞。</p>
+</blockquote>
+<pre><code class="language-java">class MyClass{
+    private final volatile int res = 0;
+    
+    //test方法获取了本实例对象的锁，然后在increase方法又获取了本实例对象的锁
+    //即 重入锁
+    //如果不可重入，那么test方法获取了本实例对象的锁后，本实例对象的锁没有释放
+    //increase方法又去获取本实例对象的锁，造成阻塞，DEADLOCK
+    public void test(){
+        //DO SOMETHING
+        synchronized(this){
+            increase();
+        }
+    }
+    
+    public void increase(){
+        synchronized(this){
+            if(res &gt;= 0){
+            	res++;
+            }
+        }
+    } 
+}
+</code></pre>
+<h4 id="为什么出现了两条-monitorexit-指令">为什么出现了两条 monitorexit 指令？</h4>
+<p>编译器需要确保方法中每条<code>monitorenter</code>指令后都要执行对应的<code>monitorexit</code> 指令。<strong>为了保证在方法异常时，<code>monitorenter</code>和<code>monitorexit</code>指令也能正常配对执行</strong>。编译器会自动产生一个异常处理器，它的目的就是用来执行<code>monitorexit</code>指令，防止出现死锁。</p>
+<p><strong>第一条 <code>monitorexit</code></strong>:</p>
+<ul>
+<li><strong>目的</strong>：处理<strong>正常退出</strong>的情况。</li>
+<li><strong>流程</strong>：当同步代码块内的所有指令都顺利执行完毕，没有抛出任何异常时，程序会执行这条指令。它释放当前线程持有的锁，然后通过 <code>goto</code> 指令跳转到方法的返回部分，完全跳过异常处理程序。</li>
+</ul>
+<p><strong>第二条 <code>monitorexit</code></strong>:</p>
+<ul>
+<li><strong>目的</strong>：处理<strong>异常退出</strong>的情况。</li>
+<li><strong>流程</strong>：这是通过 <strong>异常表（Exception Table）</strong> 实现的。异常表是字节码的一部分，它像一个“监控区”。
+<ul>
+<li>它声明：同步代码块的范围如果抛出了<strong>任何类型</strong> 的异常，控制流就立即跳转到异常处理程序的开头。</li>
+<li>在异常处理程序中，首先执行第二条 <code>monitorexit</code> 指令来<strong>确保锁被释放</strong>，然后再用 <code>athrow</code> 指令将捕获到的异常原封不动地重新抛出</li>
+</ul>
+</li>
+</ul>
+<h2 id="有序性-可见性实现原理">有序性、可见性实现原理</h2>
+<p><strong>以ARM为例。</strong></p>
+<h3 id="内存屏障-2">内存屏障</h3>
+<p>有序性、可见性实现原理依然是通过<code>Monitorenter</code>和<code>Monitorexit</code>指令，或者说其背后的内存屏障。</p>
+<p><strong><code>monitorenter</code> 与 <code>volatile</code> 读有一样的内存屏障</strong>，即在<code>monitorenter</code>之后加入 <code>LoadLoad</code> 和 <code>LoadStore</code>。</p>
+<p><strong><code>monitorecit</code> 与 <code>volatile</code> 写有一样的内存屏障</strong>，在<code>monitorexit</code>之前加入 <code>StoreStore</code> 内存屏障，在<code>monitorexit</code>之后加入 <code>StoreLoad</code> 内存屏障。</p>
+<p>和 <code>volatile</code> 一样，JVM 会使用 <code>DMB</code> 指令来实现这些屏障。在 ARMv8 上，也可能使用 <code>LDAR</code>/<code>STLR</code> 这对具有<strong>获取-释放语义</strong>的指令来实现锁操作，它们本身隐含了屏障效果，比多次使用 <code>DMB</code> 更高效。</p>
+<pre><code class="language-java">// 共享变量
+int sharedVar = 0;
+Object lock = new Object();
+
+// 线程A
+synchronized (lock) {
+    sharedVar = 42; // 修改共享变量
+} 
+// monitorexit：插入StoreStore+StoreLoad屏障，强制通过缓存一致协议通知其他核心更新sharedVar
+
+// 线程B
+synchronized (lock) { 
+    // monitorenter：插入LoadLoad+LoadStore屏障
+    //从主内存读取sharedVar
+    System.out.println(sharedVar); // 输出42
+}
+</code></pre>
+<h3 id="happens-before-规则">Happens-Before 规则</h3>
+<p><code>synchronized</code>内部的代码通过Happens-Before（先行发生）原则的<strong>第一条程序次序规则</strong>确保有序性的实现。</p>
+<blockquote>
+<p><strong>程序次序规则</strong>：<strong>在一个线程内</strong>（很明显synchronized的锁的实现，确保了synchronized修饰的代码块/方法，在一个线程内执行），<strong>按照控制流顺序</strong>，书写在前面的操作先行发生于书写在后面的操作。只是保证了单线程中的程序执行顺序是看起来按照书写顺序的，<strong>CPU/编译器仍然可以对此进行重排，只要依赖关系不发生冲突</strong>，确保有序性的实现。</p>
+</blockquote>
+<p><strong>临界区里可能有成百上千个变量的读写，为什么只在锁的入口和出口插屏障就足够了？</strong></p>
+<p>这是因为 <strong>Happens-Before</strong> 规则中的<strong>第二条管程锁定规则</strong>：</p>
+<blockquote>
+<p>一个 unlock 操作先行发生于后面对同一个锁的 lock 操作。</p>
+</blockquote>
+<p>JVM 通过在释放锁时插入“写屏障”，强制刷新所有修改；在获取锁时插入“读屏障”，强制清空无效队列。这就保证了：</p>
+<ul>
+<li><strong>线程A</strong>在临界区里做的所有写操作，都在其<strong>释放锁</strong>（写屏障）时被“推送”出去了。</li>
+<li><strong>线程B</strong>在<strong>获取锁</strong>（读屏障）时，做好了“接收”所有这些新数据的准备。</li>
+<li>因此，当线程B进入临界区时，它必然能看到线程A所做的全部修改。</li>
+</ul>
+<h3 id="注意-2">注意</h3>
+<p>内存屏障是针对于整个代码块的，也就是说<code>synchronized</code>代码块外，虽然能够保证有序性，但是synchronized`代码块内是<strong>无法禁止指令重排和处理器优化的</strong>，即使有着Happens-Before确保也一样。</p>
+<h1 id="final">final</h1>
+<ul>
+<li>所有的final修饰的字段都是编译期常量吗?</li>
+<li>如何理解private所修饰的方法是隐式的final?</li>
+<li>说说final类型的类如何拓展? 比如String是final类型，我们想写个MyString复用所有String中方法，同时增加一个新的toMyString()的方法，应该如何做?</li>
+<li>final方法可以被重载吗? 可以</li>
+<li>父类的final方法能不能够被子类重写? 不可以</li>
+<li>说说final域重排序规则?</li>
+<li>说说final的原理?</li>
+<li>使用 final 的限制条件和局限性?</li>
+</ul>
+<h2 id="final修饰的目标">final修饰的目标</h2>
+<h3 id="类">类</h3>
+<p>当某个类的整体定义为final时。表明这个类是无法被继承的。</p>
+<p>注意：final类中的所有方法都隐式为final，因此无法覆盖。所以在final类中给任何方法添加final关键字是没有任何意义的。</p>
+<h4 id="如果想要复用final类中的方法无法继承如何解决">如果想要复用final类中的方法，无法继承，如何解决？</h4>
+<p>设计模式主要关系有：继承/实现、组合。</p>
+<p>继承/实现（X），尝试组合。</p>
+<pre><code class="language-java">class MyClass{
+    private FinalClass fc;
+
+    // ...init &amp; other methods
+
+    // 调用final的方法
+    public String print(){
+        return fc.print();
+    }
+
+    // 添加新方法
+    public String myPrint(){
+        //...
+    }
+}
+</code></pre>
+<h3 id="变量">变量</h3>
+<p>final修饰的变量分为，编译期常量，非编译期常量。</p>
+<p>编译期常量指的就是程序在编译时就能确定这个常量的具体值。 非编译期常量就是只有程序在运行时才能确定常量的值，因此也称为运行时常量。</p>
+<p>都是常量，一旦确定无法修改，只不过确定的时机不一样。</p>
+<p>static final修饰的变量，不意味着这一定是编译期常量，也可以是运行时常量。</p>
+<p>static关键字的主要作用是：修饰的变量并不属于一个对象实例，而是属于这个类的。static变量在类被 JVM 加载的那一刻就被分配了，由于那时还没有任何对象被创建出来，所以它不可能在堆里。它必须存储在一个<strong>与类信息共存</strong>的地方。这个地方就是<strong>方法区</strong>。</p>
+<h3 id="方法">方法</h3>
+<ul>
+<li>private 方法是隐式的final</li>
+<li>final 方法是可以被重载的</li>
+<li>final 修饰的方法无法被覆写</li>
+</ul>
+<p>子类可以覆写父类private方法，同时改为public的原因在于：private方法是隐式的final，没有继承到该方法，<strong>它只是定义了一个全新的、属于自己的 public 方法，这个方法恰好与父类某个 private 方法同名而已。</strong></p>
+<h3 id="参数">参数</h3>
+<p>final来修饰方法参数的原因是防止方法参数在调用时被篡改。</p>
+<p>如果修饰基础类型，值不能修改。</p>
+<p>如果修饰引用类型，仅指向引用对象的对象不能修改。（也就是说还可以通过被引用对象的方法，对被引用对象进行改变，但是指向引用对象的对象，不能被修改指向其他对象）</p>
+<h2 id="有序性的实现">有序性的实现</h2>
+<p>以ARM架构为例。</p>
+<h3 id="写-final-域的重排序规则">写 final 域的重排序规则</h3>
+<p>JMM 禁止编译器把 <code>final</code> 域的写操作重排序到构造函数之外。JMM要求在写 <code>final</code> 域之后，构造函数 return 之前，插入一个 <code>StoreStore</code> 内存屏障。这个屏障禁止处理器把 <code>final</code> 域的写操作重排序到构造函数之外。</p>
+<p><strong>这意味着：</strong> 在对象引用被任何其他线程可见之前，对象的 <code>final</code> 字段必定已经被正确初始化了。</p>
+<h3 id="读-final-域的重排序规则">读 final 域的重排序规则</h3>
+<p>JMM 会在读 <code>final</code> 域的操作之前插入一个 <code>LoadLoad</code> 内存屏障。这确保在读一个对象的 <code>final</code> 字段时，必定先已经读到了该对象的引用（该对象已经构造完毕），从而能读到正确初始化后的 <code>final</code> 值。</p>
+<pre><code class="language-java">public class FinalFieldExample {
+    final int x;
+    int y;
+    static FinalFieldExample instance;
+    public FinalFieldExample() {
+        x = 1; // 写 final 域
+        //StoreStore屏障 更新Store Buffer
+        y = 2; // 写普通域
+        //构造函数return
+    }
+	
+    //线程A
+    public static void writer() {
+        instance = new FinalFieldExample();
+    }
+	
+    //线程B
+    public static void reader() {
+        FinalFieldExample obj = instance; // 读对象引用
+        if (obj != null) {
+            //LoadLoad屏障 确认Invalidate Queue
+            int a = obj.x; // 读 final 域 (保证能看到 1)
+            int b = obj.y; // 读普通域 (可能看到 0, 即默认值)
+            System.out.println(&quot;a = &quot; + a + &quot;, b = &quot; + b);
+        }
+    }
+}
+</code></pre>
+<p>假设线程 A 执行 <code>writer()</code>，线程 B 执行 <code>reader()</code>。</p>
+<p><strong>得益于 final 的禁止重排序规则：</strong></p>
+<ul>
+<li>对于线程 B 来说，<code>int a = obj.x</code> 这条语句<strong>一定能看到</strong>被正确初始化的值 <code>1</code>。因为写 <code>final</code> 域 (<code>x=1</code>) 的操作不能被重排序到构造函数之外，所以在线程 A 将 <code>instance</code> 引用赋值给 <code>obj</code> 时，<code>x</code> 肯定已经是 <code>1</code> 了。</li>
+<li>然而，<code>int b = obj.y</code> 这条语句<strong>可能会看到</strong> <code>y</code> 的默认值 <code>0</code>。<strong>因为写普通域 (<code>y=2</code>) 的操作没有特殊保护，可能被重排序到 <code>instance</code> 赋值操作之后</strong>。如果发生了这种重排序，线程 B 就可能看到一个尚未完全初始化的对象，从而读到 <code>y=0</code>。</li>
+</ul>
+<p>这个有序性有一个重要的前提：<strong>在构造函数内部，不能让正在构造的 <code>this</code> 引用逸出</strong>。</p>
+<pre><code class="language-java">public class ThisEscape {
+    final int x;
+
+    public ThisEscape() {
+        x = 1;
+        // 错误！在构造完成前就发布了this引用
+        SomeClass.register(this); // this引用“逸出”了
+        // 其他初始化操作...
+    }
+}
+</code></pre>
+<p>如果在构造函数中把 <code>this</code> 传递给其他方法或线程，那么对方可能在你还没执行完构造函数（比如 <code>x</code> 还没被赋值）时就开始操作x，<code>final</code> 的禁止重排序规则也无法保证这种情况下的线程安全，<code>final</code> 的有序性只是保证了final变量一定会在构造函数结束前完成初始化。</p>
+<h1 id="注意-3">注意</h1>
+<p>JAVA多线程和并发的一些问题 帮助理解</p>
+<p>https://www.cnblogs.com/dolphin0520/p/3932934.html</p>
+<h1 id="参考">参考</h1>
+<blockquote>
+<p>https://www.cnblogs.com/dolphin0520/p/3920373.html</p>
+<p>https://www.cnblogs.com/cswiki/p/14747524.html</p>
+<p>https://pdai.tech/md/java/thread/java-thread-x-key-volatile.html</p>
+<p>https://juejin.cn/post/7212101193437724728#heading-6</p>
+<p>https://ylgrgyq.com/memory-barrier.html</p>
+<p>https://www.zhihu.com/question/289712546/answer/2451481994</p>
+<p>https://juejin.cn/post/6844904144273145863</p>
+<p>https://gist.github.com/yulewei/1e72eea56f7075573c73a2624fe94578</p>
+<p>https://mp.weixin.qq.com/s/zvBxfVrB7czS7qU5SW_n7Q</p>
+<p>https://www.cnblogs.com/hongdada/p/14087177.html</p>
+<p>https://tech.youzan.com/javasuo-yu-xian-cheng-de-na-xie-shi/</p>
+<p>https://github.com/farmerjohngit/myblog/issues/13</p>
+<p>https://blog.csdn.net/L__ear/article/details/106394728</p>
+</blockquote>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E8%83%8C%E6%99%AF">背景</a>
+<ul>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81%E5%A4%9A%E7%BA%BF%E7%A8%8B%E5%A4%9A%E6%A0%B8cpu">为什么需要多线程/多核CPU</a></li>
+<li><a href="#%E5%A4%9A%E6%A0%B8cpu%E7%9A%84%E5%8D%8F%E4%BD%9C%E6%96%B9%E5%BC%8F">多核CPU的协作方式</a>
+<ul>
+<li><a href="#%E9%AB%98%E9%80%9F%E7%BC%93%E5%AD%98%E5%B8%A6%E6%9D%A5%E7%9A%84%E9%97%AE%E9%A2%98">高速缓存带来的问题</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#jmm%E7%9A%84%E4%BB%8B%E7%BB%8D">JMM的介绍</a></li>
+<li><a href="#%E5%A4%9A%E7%BA%BF%E7%A8%8B%E7%9A%84%E4%B8%A4%E5%A4%A7%E6%A0%B8%E5%BF%83%E9%97%AE%E9%A2%98">多线程的两大核心问题</a>
+<ul>
+<li><a href="#%E5%A6%82%E4%BD%95%E4%BF%9D%E9%9A%9C%E5%85%B1%E4%BA%AB%E6%95%B0%E6%8D%AE%E4%B8%80%E8%87%B4%E6%80%A7">如何保障共享数据一致性？</a></li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E4%B9%8B%E9%97%B4%E5%A6%82%E4%BD%95%E9%80%9A%E4%BF%A1%E5%8D%8F%E4%BD%9C">线程之间如何通信协作？</a></li>
+</ul>
+</li>
+<li><a href="#%E4%BF%9D%E9%9A%9C%E5%85%B1%E4%BA%AB%E6%95%B0%E6%8D%AE%E4%B8%80%E8%87%B4%E6%80%A7%E7%9A%84%E4%B8%89%E5%A4%A7%E8%A6%81%E6%B1%82">保障共享数据一致性的三大要求</a></li>
+<li><a href="#happens-before%E5%85%88%E8%A1%8C%E5%8F%91%E7%94%9F%E5%8E%9F%E5%88%99">Happens-Before（先行发生）原则</a>
+<ul>
+<li><a href="#%E5%AE%9A%E4%B9%89">定义</a>
+<ul>
+<li><a href="#%E7%A8%8B%E5%BA%8F%E6%AC%A1%E5%BA%8F%E8%A7%84%E5%88%99">程序次序规则</a></li>
+<li><a href="#%E9%94%81%E8%A7%84%E5%88%99">锁规则</a></li>
+<li><a href="#volatile-%E5%8F%98%E9%87%8F%E8%A7%84%E5%88%99">volatile 变量规则</a></li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E5%90%AF%E5%8A%A8%E8%A7%84%E5%88%99">线程启动规则</a></li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E7%BB%88%E6%AD%A2%E8%A7%84%E5%88%99">线程终止规则</a></li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E4%B8%AD%E6%96%AD%E8%A7%84%E5%88%99">线程中断规则</a></li>
+<li><a href="#%E5%AF%B9%E8%B1%A1%E7%BB%88%E7%BB%93%E8%A7%84%E5%88%99">对象终结规则</a></li>
+<li><a href="#%E4%BC%A0%E9%80%92%E6%80%A7">传递性</a></li>
+</ul>
+</li>
+<li><a href="#%E6%B3%A8%E6%84%8F">注意</a></li>
+</ul>
+</li>
+<li><a href="#%E5%86%85%E5%AD%98%E5%B1%8F%E9%9A%9C">内存屏障</a>
+<ul>
+<li><a href="#%E5%89%8D%E8%A8%80">前言</a>
+<ul>
+<li><a href="#%E7%93%B6%E9%A2%88%E4%B8%80%E5%86%99%E6%93%8D%E4%BD%9C%E5%A4%AA%E6%85%A2">瓶颈一：写操作太慢</a></li>
+<li><a href="#%E7%93%B6%E9%A2%88%E4%BA%8C%E6%97%A0%E6%95%88%E5%8C%96%E7%A1%AE%E8%AE%A4%E5%A4%AA%E6%85%A2">瓶颈二：无效化确认太慢</a></li>
+<li><a href="#%E6%80%BB%E7%BB%93">总结</a>
+<ul>
+<li><a href="#%E5%86%99%E5%B1%8F%E9%9A%9C">写屏障</a></li>
+<li><a href="#%E8%AF%BB%E5%B1%8F%E9%9A%9C">读屏障</a></li>
+</ul>
+</li>
+<li><a href="#%E8%A1%A5%E5%85%85">补充</a></li>
+</ul>
+</li>
+<li><a href="#%E7%A1%AC%E4%BB%B6%E5%B1%82%E9%9D%A2%E7%9A%84%E5%86%85%E5%AD%98%E5%B1%8F%E9%9A%9C">硬件层面的内存屏障</a></li>
+<li><a href="#jvm%E5%B1%82%E9%9D%A2%E7%9A%84%E5%86%85%E5%AD%98%E5%B1%8F%E9%9A%9C">JVM层面的内存屏障</a></li>
+</ul>
+</li>
+<li><a href="#volatile%E6%98%93%E6%8C%A5%E5%8F%91%E7%9A%84">volatile（易挥发的）</a>
+<ul>
+<li><a href="#%E4%BD%9C%E7%94%A8">作用</a></li>
+<li><a href="#volatile-%E6%9C%89%E5%BA%8F%E6%80%A7-%E5%8F%AF%E8%A7%81%E6%80%A7%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86">volatile 有序性、可见性实现原理</a>
+<ul>
+<li><a href="#%E5%89%8D%E8%A8%80-2">前言</a></li>
+<li><a href="#jvm%E5%AF%B9volatile%E7%9A%84%E6%8F%92%E5%85%A5%E5%B1%8F%E9%9A%9C%E7%AD%96%E7%95%A5">JVM对volatile的插入屏障策略</a>
+<ul>
+<li><a href="#linux-arm">Linux ARM</a></li>
+<li><a href="#linux-x86">Linux  x86</a></li>
+</ul>
+</li>
+<li><a href="#volatile%E7%A6%81%E6%AD%A2%E9%87%8D%E6%8E%92%E5%BA%8F%E5%9C%BA%E6%99%AF">volatile禁止重排序场景</a></li>
+</ul>
+</li>
+<li><a href="#%E7%A6%81%E6%AD%A2%E4%BD%BF%E7%94%A8volatile%E7%9A%84%E6%9D%A1%E4%BB%B6">禁止使用volatile的条件</a>
+<ul>
+<li><a href="#%E5%9C%A8%E9%9C%80%E8%A6%81%E5%8E%9F%E5%AD%90%E6%80%A7%E6%97%B6%E4%B8%8D%E5%8F%AF%E4%BB%A5%E4%BB%85%E4%BD%BF%E7%94%A8volatile">在需要原子性时不可以仅使用volatile</a></li>
+<li><a href="#%E5%AF%B9%E5%8F%98%E9%87%8F%E7%9A%84%E5%86%99%E6%93%8D%E4%BD%9C%E4%BE%9D%E8%B5%96%E4%BA%8E%E5%BD%93%E5%89%8D%E5%80%BC">对变量的写操作依赖于当前值</a></li>
+<li><a href="#%E8%AF%A5%E5%8F%98%E9%87%8F%E5%8C%85%E5%90%AB%E5%9C%A8%E6%9C%89%E5%85%B6%E4%BB%96%E5%8F%98%E9%87%8F%E5%8F%82%E4%B8%8E%E7%9A%84%E4%B8%8D%E5%8F%98%E5%BC%8F%E4%B8%AD">该变量包含在有其他变量参与的不变式中</a></li>
+</ul>
+</li>
+<li><a href="#%E5%B8%B8%E4%BD%BF%E7%94%A8volatile%E7%9A%84%E5%9C%BA%E6%99%AF">常使用volatile的场景</a>
+<ul>
+<li><a href="#%E7%8A%B6%E6%80%81%E6%A0%87%E5%BF%97">状态标志</a></li>
+<li><a href="#%E5%AE%89%E5%85%A8%E5%8F%91%E5%B8%83%E5%AF%B9%E8%B1%A1">安全发布对象</a></li>
+<li><a href="#%E8%A7%82%E5%AF%9F%E8%80%85%E6%A8%A1%E5%BC%8F">观察者模式</a></li>
+<li><a href="#%E8%AF%BB%E5%A4%9A%E5%86%99%E5%B0%91%E7%9A%84%E8%AE%A1%E6%95%B0%E5%99%A8">读多写少的计数器</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#synchronized-%CB%88s%C9%AA%C5%8Bkr%C9%99n%CA%8C%C9%AAz">synchronized （/ˈsɪŋkrənʌɪz/）</a>
+<ul>
+<li><a href="#%E4%BD%BF%E7%94%A8%E6%B3%A8%E6%84%8F">使用注意</a></li>
+<li><a href="#synchronized%E4%BF%AE%E9%A5%B0%E7%9A%84%E7%9B%AE%E6%A0%87">synchronized修饰的目标</a>
+<ul>
+<li><a href="#%E5%AE%9E%E4%BE%8B%E5%AF%B9%E8%B1%A1%E9%94%81">实例对象锁</a>
+<ul>
+<li><a href="#synchronized%E9%9D%9Estatic%E6%96%B9%E6%B3%95-synchronizedthis-%E5%AF%B9%E6%AF%94">synchronized(非static方法)、synchronized(this) 对比</a></li>
+<li><a href="#synchronized%E9%9D%9Ethis-synchronizedthis-%E5%AF%B9%E6%AF%94">synchronized(非this)、 synchronized(this) 对比</a></li>
+</ul>
+</li>
+<li><a href="#%E7%B1%BB%E5%AF%B9%E8%B1%A1%E9%94%81">类对象锁</a>
+<ul>
+<li><a href="#synchronizedclass-synchronizedstatic%E6%96%B9%E6%B3%95%E5%AF%B9%E6%AF%94">synchronized(*.class)、synchronized(static方法)对比</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E5%8E%9F%E5%AD%90%E6%80%A7%E5%AE%9E%E7%8E%B0%E5%8A%A0%E9%94%81%E5%92%8C%E9%87%8A%E6%94%BE%E9%94%81%E7%9A%84%E5%8E%9F%E7%90%86">原子性实现（加锁和释放锁）的原理</a>
+<ul>
+<li><a href="#acc_synchronized%E6%A0%87%E8%AE%B0%E7%AC%A6">ACC_SYNCHRONIZED标记符</a></li>
+<li><a href="#synchronized%E9%94%81%E7%9A%84%E5%8E%9F%E7%90%86">Synchronized锁的原理</a>
+<ul>
+<li><a href="#%E9%94%81%E5%AF%B9%E8%B1%A1">锁对象</a></li>
+<li><a href="#%E5%9B%9B%E7%A7%8D%E9%94%81%E7%8A%B6%E6%80%81">四种锁状态</a></li>
+<li><a href="#%E9%94%81%E5%8D%87%E7%BA%A7%E6%B5%81%E7%A8%8B">锁升级流程</a>
+<ul>
+<li><a href="#%E6%97%A0%E9%94%81">无锁</a></li>
+<li><a href="#%E5%81%8F%E5%90%91%E9%94%81-biased-locking">偏向锁 (Biased Locking)</a>
+<ul>
+<li><a href="#%E5%8A%A0%E9%94%81">加锁</a></li>
+<li><a href="#%E9%94%81%E9%87%8A%E6%94%BE">锁释放</a></li>
+<li><a href="#%E9%94%81%E6%92%A4%E9%94%80-%E9%94%81%E9%87%8D%E5%81%8F%E5%90%91-%E9%94%81%E5%8D%87%E7%BA%A7">锁撤销、锁重偏向、锁升级</a></li>
+<li><a href="#%E8%A1%A5%E5%85%85-2">补充</a></li>
+<li><a href="#%E4%BC%98%E7%82%B9">优点</a></li>
+<li><a href="#%E7%BC%BA%E7%82%B9">缺点</a></li>
+</ul>
+</li>
+<li><a href="#%E8%BD%BB%E9%87%8F%E7%BA%A7%E9%94%81">轻量级锁</a>
+<ul>
+<li><a href="#%E5%8A%A0%E9%94%81%E8%BD%BB%E9%87%8F%E7%BA%A7%E9%94%81%E7%9A%84%E7%94%B1%E6%9D%A5">加锁/轻量级锁的由来</a></li>
+<li><a href="#%E9%94%81%E9%87%8A%E6%94%BE-2">锁释放</a></li>
+</ul>
+</li>
+<li><a href="#%E9%87%8D%E9%87%8F%E7%BA%A7%E9%94%81">重量级锁</a>
+<ul>
+<li><a href="#%E5%8A%A0%E9%94%81-%E9%94%81%E8%86%A8%E8%83%80">加锁、锁膨胀</a></li>
+<li><a href="#%E8%BD%BB%E9%87%8F%E7%BA%A7%E9%94%81%E8%86%A8%E8%83%80">轻量级锁膨胀</a></li>
+<li><a href="#%E6%97%A0%E9%94%81%E7%8A%B6%E6%80%81%E9%94%81%E8%86%A8%E8%83%80">无锁状态锁膨胀</a></li>
+<li><a href="#inflating">INFLATING</a></li>
+<li><a href="#objectmonitor">ObjectMonitor</a></li>
+<li><a href="#monitor%E7%AD%89%E5%BE%85">Monitor等待</a></li>
+<li><a href="#monitor%E9%87%8A%E6%94%BE">Monitor释放</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#hashcode%E4%B8%8E%E9%94%81">hashCode与锁</a></li>
+<li><a href="#%E5%86%85%E6%A0%B8%E6%80%81-%E7%94%A8%E6%88%B7%E6%80%81%E5%88%87%E6%8D%A2%E4%B8%8E%E7%BA%BF%E7%A8%8B%E4%B8%8A%E4%B8%8B%E6%96%87%E5%88%87%E6%8D%A2">内核态、用户态切换与线程上下文切换</a>
+<ul>
+<li><a href="#%E7%AB%9E%E4%BA%89%E9%94%81%E5%A4%B1%E8%B4%A5">竞争锁失败</a></li>
+<li><a href="#%E9%87%8A%E6%94%BE%E9%94%81%E5%B9%B6%E5%94%A4%E9%86%92%E7%AD%89%E5%BE%85%E8%80%85">释放锁并唤醒等待者</a></li>
+<li><a href="#%E8%A2%AB%E5%94%A4%E9%86%92%E7%BA%BF%E7%A8%8B%E9%87%8D%E6%96%B0%E5%B0%9D%E8%AF%95%E8%8E%B7%E5%8F%96%E9%94%81">被唤醒线程重新尝试获取锁</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#monitorenter%E5%92%8Cmonitorexit%E6%8C%87%E4%BB%A4">Monitorenter和Monitorexit指令</a>
+<ul>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E5%87%BA%E7%8E%B0%E4%BA%86%E4%B8%A4%E6%9D%A1-monitorexit-%E6%8C%87%E4%BB%A4">为什么出现了两条 monitorexit 指令？</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E6%9C%89%E5%BA%8F%E6%80%A7-%E5%8F%AF%E8%A7%81%E6%80%A7%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86">有序性、可见性实现原理</a>
+<ul>
+<li><a href="#%E5%86%85%E5%AD%98%E5%B1%8F%E9%9A%9C-2">内存屏障</a></li>
+<li><a href="#happens-before-%E8%A7%84%E5%88%99">Happens-Before 规则</a></li>
+<li><a href="#%E6%B3%A8%E6%84%8F-2">注意</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#final">final</a>
+<ul>
+<li><a href="#final%E4%BF%AE%E9%A5%B0%E7%9A%84%E7%9B%AE%E6%A0%87">final修饰的目标</a>
+<ul>
+<li><a href="#%E7%B1%BB">类</a>
+<ul>
+<li><a href="#%E5%A6%82%E6%9E%9C%E6%83%B3%E8%A6%81%E5%A4%8D%E7%94%A8final%E7%B1%BB%E4%B8%AD%E7%9A%84%E6%96%B9%E6%B3%95%E6%97%A0%E6%B3%95%E7%BB%A7%E6%89%BF%E5%A6%82%E4%BD%95%E8%A7%A3%E5%86%B3">如果想要复用final类中的方法，无法继承，如何解决？</a></li>
+</ul>
+</li>
+<li><a href="#%E5%8F%98%E9%87%8F">变量</a></li>
+<li><a href="#%E6%96%B9%E6%B3%95">方法</a></li>
+<li><a href="#%E5%8F%82%E6%95%B0">参数</a></li>
+</ul>
+</li>
+<li><a href="#%E6%9C%89%E5%BA%8F%E6%80%A7%E7%9A%84%E5%AE%9E%E7%8E%B0">有序性的实现</a>
+<ul>
+<li><a href="#%E5%86%99-final-%E5%9F%9F%E7%9A%84%E9%87%8D%E6%8E%92%E5%BA%8F%E8%A7%84%E5%88%99">写 final 域的重排序规则</a></li>
+<li><a href="#%E8%AF%BB-final-%E5%9F%9F%E7%9A%84%E9%87%8D%E6%8E%92%E5%BA%8F%E8%A7%84%E5%88%99">读 final 域的重排序规则</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E6%B3%A8%E6%84%8F-3">注意</a></li>
+<li><a href="#%E5%8F%82%E8%80%83">参考</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://kanyewestforreal.github.io/post/android-jetpack1-lifecycle/">
+              <h3 class="post-title">
+                Android Jetpack(1) Lifecycle源码阅读记录
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  This blog is just for me to record the questions, which in my developing.
+  <div class="footer-right">
+    <a class="rss" href="https://kanyewestforreal.github.io//atom.xml" target="_blank">
+      <i class="ri-rss-line"></i> RSS
+    </a>
+    <span id="busuanzi_container_site_pv" style="margin-top: 8px;">
+      本站总访问量<span id="busuanzi_value_site_pv"></span>次
+    </span>
+  </div>
+  <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      // hljs.initHighlightingOnLoad()
+
+      // let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // // This should probably be throttled.
+      // // Especially because it triggers during smooth scrolling.
+      // // https://lodash.com/docs/4.17.10#throttle
+      // // You could do like...
+      // // window.addEventListener("scroll", () => {
+      // //    _.throttle(doThatStuff, 100);
+      // // });
+      // // Only not doing it here to keep this Pen dependency-free.
+
+      // window.addEventListener("scroll", event => {
+      //   let fromTop = window.scrollY;
+
+      //   mainNavLinks.forEach((link, index) => {
+      //     let section = document.getElementById(decodeURI(link.hash).substring(1));
+      //     let nextSection = null
+      //     if (mainNavLinks[index + 1]) {
+      //       nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+      //     }
+      //     if (section.offsetTop <= fromTop) {
+      //       if (nextSection) {
+      //         if (nextSection.offsetTop > fromTop) {
+      //           link.classList.add("current");
+      //         } else {
+      //           link.classList.remove("current");    
+      //         }
+      //       } else {
+      //         link.classList.add("current");
+      //       }
+      //     } else {
+      //       link.classList.remove("current");
+      //     }
+      //   });
+      // });
+
+    </script>
+  </body>
+</html>

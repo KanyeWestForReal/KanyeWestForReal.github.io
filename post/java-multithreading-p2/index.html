@@ -1,0 +1,2737 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Java多线程笔记（2） | Grinofith&#39;s Blog</title>
+<link rel="shortcut icon" href="https://kanyewestforreal.github.io//favicon.ico?v=1765275803375">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://kanyewestforreal.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Java多线程笔记（2） | Grinofith&#39;s Blog - Atom Feed" href="https://kanyewestforreal.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="并发编程概念
+操作系统基础：线程、进程
+Java并发编程基础
+线程池
+ThreadLocal
+并发和并行的区别
+
+并发：指系统具有处理多个任务的能力。这些任务在宏观上看起来是同时执行的，但在微观上，CPU可能在多个任务之间快速交替执行。
+并..." />
+    <meta name="keywords" content="Java" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <!-- <script src="//cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.5.1/build/highlight.min.js"></script> -->
+    <script src="//cdn.jsdelivr.net/npm/leancloud-storage@4.13.2/dist/av-min.js"></script>
+    <script src="/media/js/read_mark.js"></script>
+    <script src="/media/js/highlight/highlight.min.js"></script>
+    <script src="/media/js/sroll_markdown_titile_list.js"></script>
+    <link rel="stylesheet" type="text/css" href="/media/js/highlight/styles/atom-one-dark.css">
+    <script>hljs.highlightAll();</script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://kanyewestforreal.github.io/">
+  <img class="avatar" src="https://kanyewestforreal.github.io//images/avatar.png?v=1765275803375" alt="">
+  </a>
+  <h1 class="site-title">
+    Grinofith&#39;s Blog
+  </h1>
+  <p class="site-description">
+    The key is seriously reflecting.
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Java多线程笔记（2）
+            </h2>
+            <div class="post-info">
+              <span>
+                2025-10-07
+              </span>
+              <span class="post-views">
+                  <span >阅读量：</span>
+                  <span id="dynamic-views-counter"></span>
+              </span>
+              <span>
+                92 min read
+              </span>
+              
+                <a href="https://kanyewestforreal.github.io/tag/java/" class="post-tag">
+                  # Java
+                </a>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://kanyewestforreal.github.io//post-images/java-multithreading-p2.png" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content" v-pre>
+                <p>并发编程概念</p>
+<p>操作系统基础：线程、进程</p>
+<p>Java并发编程基础</p>
+<p>线程池</p>
+<p><code>ThreadLocal</code></p>
+<h1 id="并发和并行的区别">并发和并行的区别</h1>
+<ul>
+<li><strong>并发</strong>：指<strong>系统具有处理多个任务的能力</strong>。这些任务在宏观上看起来是同时执行的，但在微观上，CPU可能在多个任务之间快速交替执行。</li>
+<li><strong>并行</strong>：指<strong>系统具有同时执行多个任务的能力</strong>。这要求必须有多个计算单元（如多核CPU），使得多个任务可以在同一时刻同时执行。</li>
+</ul>
+<h1 id="同步和异步-阻塞和非阻塞的区别">同步和异步、阻塞和非阻塞的区别</h1>
+<p>四个是不一样的概念。</p>
+<p>在中文文档内，<strong>异步</strong>常常被等于<strong>非阻塞</strong>。</p>
+<ul>
+<li><strong>同步 vs 异步</strong>：<strong>结果怎么拿？<strong>关注的是</strong>消息通信机制</strong>或<strong>任务执行流程</strong>。</li>
+<li><strong>阻塞 vs 非阻塞</strong>：<strong>你等不等？<strong>关注的是</strong>调用者在等待结果时的状态</strong>。</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">维度</th>
+<th style="text-align:left">概念</th>
+<th style="text-align:left">核心区别</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>调用者状态</strong></td>
+<td style="text-align:left"><strong>阻塞</strong></td>
+<td style="text-align:left"><strong>等待时能不能干别的事？</strong> 阻塞：不能，线程被挂起。</td>
+</tr>
+<tr>
+<td style="text-align:left"></td>
+<td style="text-align:left"><strong>非阻塞</strong></td>
+<td style="text-align:left">非阻塞：能，线程可执行其他任务。</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>消息机制</strong></td>
+<td style="text-align:left"><strong>同步</strong></td>
+<td style="text-align:left"><strong>谁来主动拿结果？</strong> 同步：调用者主动等待或查询。</td>
+</tr>
+<tr>
+<td style="text-align:left"></td>
+<td style="text-align:left"><strong>异步</strong></td>
+<td style="text-align:left">异步：调用者等待被调用方主动通知。</td>
+</tr>
+</tbody>
+</table>
+<p>从定义上来说，<code>OkHttp</code> 是阻塞（使用BIO实现——底层用阻塞的 socket / Okio），但是对外提供了异步API。</p>
+<p><code>RxJava</code> / <code>CompletableFuture</code> 提供了异步、同步API，可以任务可以使用阻塞IO、非阻塞IO。两者在使用<code>OkHttp</code>时，实际上库把请求交给内部的线程池（Dispatcher/worker threads），在这些线程上执行阻塞 I/O，这些线程被阻塞，然后通过回调把结果回传给用户主线程，换句话说是“线程池 + 阻塞 I/O”的异步封装。</p>
+<h1 id="线程-进程-协程的区别">线程、进程、协程的区别</h1>
+<p>进程是操作系统<strong>资源分配的基本单位</strong>。进程拥有独立的内存<strong>堆、栈</strong>、系统资源（如文件句柄、网络连接）和至少一个线程。</p>
+<p>线程是<strong>CPU分发、调度的基本单位</strong>，共享进程的内存资源，是进程中的一个执行流。同时线程拥有<strong>独自的栈和寄存器</strong>。</p>
+<p>协程是<strong>用户态/runtime层面</strong>的，轻量级可挂起<strong>任务</strong>，它的比较对象应该是<code>Runnable</code>、<code>Callable</code>之类的任务，而不是线程。协程运行时会占用线程的CPU时间片，同一线程下协程之间共享对应的线程、进程资源。</p>
+<p>在 Java 中，当我们启动 main 函数时其实就是启动了一个 JVM 的进程，而 main 函数所在的线程，就是这个进程中的一个线程，也称主线程。</p>
+<p>对于线程和进程，我们可以这么理解：</p>
+<ul>
+<li>当进程只有一个线程时，可以认为进程就等于线程；</li>
+<li>当进程拥有多个线程时，这些线程会共享相同的虚拟内存和全局变量等资源，这些资源在上下文切换时是不需要修改的；</li>
+<li>进程是资源（包括内存、打开的文件等）分配的单位，线程是 CPU 调度的单位；</li>
+<li>进程拥有一个完整的资源平台，而线程只独享必不可少的资源，如<strong>寄存器和栈</strong>；</li>
+<li>线程同样具有就绪、阻塞、执行三种基本状态，同样具有状态之间的转换关系；</li>
+<li>线程能减少并发执行的空间开销；</li>
+</ul>
+<h1 id="一个线程可以同时运行多个协程吗">一个线程可以同时运行多个协程吗？</h1>
+<p>如果“同时”指“在同一时刻真正<strong>并行</strong>执行”——<strong>不能</strong>。单个 CPU 核心 / 单个线程在任一瞬间只有一个指令流在执行，所以同一线程上只有一个协程在运行。</p>
+<p>如果“同时”指“<strong>并发</strong>地管理/进行”（也就是切换执行，看起来像同时）——<strong>可以</strong>。一个线程可以承载并调度大量协程，按需在它们之间切换（通常由协程主动让出控制权），因此看起来多个协程“同时在进展”。</p>
+<h1 id="java里面的线程和操作系统的线程一样吗">Java里面的线程和操作系统的线程一样吗？</h1>
+<p>按照管理、使用对象对线程分类，可分为：</p>
+<ul>
+<li><strong>用户线程</strong>：<strong>用户空间程序或运行时环境（如 JVM、Go runtime）创建和管理的线程抽象，其生命周期和调度逻辑由应用程序或语言运行时控制</strong>。内核无法感知用户线程，因此不具备利用多核并行的能力。<strong>只要不是内核线程，那么可以说是用户线程。</strong></li>
+<li><strong>内核线程</strong>：<strong>由操作系统内核创建、调度和管理的执行实体，拥有独立的内核栈和调度上下文，能够直接参与 CPU 时间片分配并利用多核并行能力。</strong></li>
+</ul>
+<p>用户线程创建、切换成本低，但不可以利用多核；内核线程创建、切换成本高，可以利用多核。</p>
+<p>映射模型是<strong>用户线程和内核线程之间</strong>的关联方式，常见的映射模型有这三种：</p>
+<ol>
+<li>一对一（一个用户线程对应一个内核线程）</li>
+<li>多对一（多个用户线程映射到一个内核线程）</li>
+<li>多对多（多个用户线程映射到多个内核线程）</li>
+</ol>
+<p>在现代 Java 中，<code>java.lang.Thread</code> 虽属于用户线程（因其由 Java 程序创建并封装），但每个用户线程在启动时都会直接使用系统API，创建一个对应的内核线程，两者一一绑定，实际调度完全交由内核完成，是 1 对 1 的映射模型。</p>
+<p>因此可以简单的说，Java的线程是内核线程。</p>
+<p>推荐阅读</p>
+<blockquote>
+<p>https://go.cyub.vip/gmp/gmp-model/</p>
+</blockquote>
+<h2 id="补">补</h2>
+<p>狭义上，轻量级进程 LWP（Light-Weight Process）就是内核级线程（kernel thread / schedulable kernel entity）；（Solaris 明确把 LWP 当作内核可调度单位；在 Linux 语境下，把 LWP 当作 TID/内核线程来看待。）</p>
+<p>广义上，有时也用LWP来指代“作为用户线程与内核线程之间的可调度载体”的那个实体（即在 M:N 模型里把用户线程复用到的内核调度单元）。</p>
+<figure data-type="image" tabindex="1"><img src="https://kanyewestforreal.github.io//post-images/LWP_MODEL.webp" alt="22-LWP" loading="lazy"></figure>
+<p>推荐阅读。</p>
+<blockquote>
+<p>https://cloud.tencent.com/developer/article/2187991</p>
+</blockquote>
+<p>Linux下，进程和线程十分相似，无论进程还是线程，都是抽象成了 task 任务，在源码里都是用同一个task_struct 数据结构来实现的。</p>
+<figure data-type="image" tabindex="2"><img src="https://kanyewestforreal.github.io//post-images/task_ds.png" alt="task_ds" loading="lazy"></figure>
+<figure data-type="image" tabindex="3"><img src="https://kanyewestforreal.github.io//post-images/pid_tgid.png" alt="pid_tgid" loading="lazy"></figure>
+<p>对于进程来说，这个 pid 就是我们平时常说的进程 <code>pid</code>。</p>
+<p>对于线程来说，我们假如一个进程下创建了多个线程出来。那么每个线程的 <code>pid</code> 都是不同的。但是我们一般又需要记录线程是属于哪个进程的。这时候，<code>tgid</code> 就派上用场了，通过 <code>tgid</code> 字段来表示自己所归属的进程 ID。</p>
+<h1 id="cpu-线程-进程切换上下文是什么">CPU、线程、进程切换上下文是什么</h1>
+<p>“CPU 切换上下文”是总称；线程切换与进程切换是两种具体情形。</p>
+<p><strong>线程上下文切换</strong>是指操作系统为了执行多个线程，需要保存当前运行线程的状态，并恢复另一个线程的状态，以便下一次能继续执行当前线程的过程。</p>
+<p><strong>“上下文”是什么</strong>：指的是CPU运行时其寄存器和程序计数器的内容。寄存器存储了CPU的当前工作变量，程序计数器则指示了CPU下一条要执行的指令地址。CPU 寄存器和程序计数是 CPU 在运行任何任务前，所必须依赖的环境，这些环境就叫做 <strong>CPU 上下文</strong>。</p>
+<h2 id="进程切换上下文">进程切换上下文</h2>
+<h3 id="切换的过程">“切换”的过程</h3>
+<ul>
+<li>操作系统内核会中断当前正在执行的线程。</li>
+<li>内核将当前进程的运行时状态（寄存器、程序计数器、<strong>页表指针</strong>等）保存到其 <strong>进程控制块PCB</strong> 中。</li>
+<li>将当前进程的状态从“运行”改为“就绪”、“阻塞”或其他相应状态，并将其移入对应的调度队列。</li>
+<li>调度算法从就绪队列中选择一个优先级最高、最合适的进程来运行。</li>
+<li>恢复要运行的下一个进程的上下文，从新进程的PCB中加载其之前保存的寄存器、程序计数器、栈指针等状态信息到CPU中。切换内存管理单元（MMU）的页表，以映射新进程的地址空间。</li>
+<li>跳转并开始执行：将程序计数器（PC）设置为新进程上次被中断时下一条要执行的指令地址，CPU开始执行新进程的代码。</li>
+</ul>
+<h3 id="切换发生场景">切换发生场景</h3>
+<ul>
+<li><strong>主动放弃CPU</strong>：
+<ul>
+<li><strong>进程阻塞</strong>：当进程执行了需要等待外部事件的操作时，如进行I/O操作（读文件、网络请求）、等待信号量或锁、调用 <code>sleep()</code> 等。</li>
+<li><strong>显式让出</strong>：进程主动调用 <code>yield()</code> 等函数，自愿放弃CPU。</li>
+</ul>
+</li>
+<li><strong>被动剥夺CPU</strong>：
+<ul>
+<li><strong>时间片用完</strong>：在分时系统中，当前进程的CPU时间片耗尽，系统强制收回CPU。</li>
+<li><strong>更高优先级进程就绪</strong>：一个有更高优先级的进程进入就绪状态（如中断处理完成后唤醒了一个高优先级任务），内核会进行<strong>抢占式调度</strong>，立即剥夺当前进程的CPU。</li>
+</ul>
+</li>
+<li><strong>被中断打断</strong>：
+<ul>
+<li>虽然中断处理本身不是完整的上下文切换，但它为切换创造了条件。当中断处理程序（如时钟中断、I/O中断）完成后，内核可能会发现有一个更高优先级的进程需要运行，从而触发调度。</li>
+</ul>
+</li>
+</ul>
+<h2 id="线程切换上下文">线程切换上下文</h2>
+<h3 id="切换的过程-2">“切换”的过程</h3>
+<ul>
+<li>操作系统内核会中断当前正在执行的线程。</li>
+<li>将该线程的当前状态（所有寄存器值、程序计数器等）保存到内存中一个称为“线程控制块TCB”的数据结构里。</li>
+<li>将当前线程的状态从“运行”改为“就绪”或“阻塞”，并将其移入对应的调度队列。</li>
+<li>调度算法从就绪队列中选择一个优先级最高、最合适的线程来运行。</li>
+<li>然后从内存中加载下一个要运行的线程的已保存状态到CPU中。</li>
+<li>最后，将程序计数器指向新线程要执行的指令，CPU开始运行新线程。</li>
+</ul>
+<h3 id="切换发生场景-2">切换发生场景</h3>
+<ul>
+<li><strong>主动放弃CPU</strong>：
+<ul>
+<li><strong>线程阻塞</strong>：线程执行了需要等待的操作，如I/O操作、等待互斥锁/信号量、调用 <code>sleep()</code>、<code>wait()</code> 等。</li>
+<li><strong>显式让出</strong>：线程主动调用 <code>yield()</code>，建议调度器让出CPU。</li>
+</ul>
+</li>
+<li><strong>被动剥夺CPU</strong>：
+<ul>
+<li><strong>时间片用完</strong>：当前线程的CPU时间片耗尽。</li>
+<li><strong>更高优先级线程就绪</strong>：一个更高优先级的线程变为就绪状态，触发抢占式调度。</li>
+</ul>
+</li>
+<li><strong>被中断打断</strong>：中断处理完成后，调度器可能决定运行另一个就绪的线程。</li>
+</ul>
+<p>线程上下文切换是有代价的。它需要直接的CPU时间来保存和加载状态，并且会导致CPU缓存（如L1, L2缓存）失效，因为新线程需要加载自己的数据到缓存中，这会对性能产生显著影响。在Android开发中，<strong>不必要或过于频繁的线程切换是导致应用卡顿的重要原因之一</strong>。</p>
+<h2 id="总结">总结</h2>
+<p>线程相比进程能减少开销，体现在：</p>
+<ul>
+<li>线程的创建时间比进程快，因为进程在创建的过程中，还需要资源管理信息，比如内存管理信息、文件管理信息，而线程在创建的过程中，不会涉及这些资源管理信息，而是共享它们；</li>
+<li>线程的终止时间比进程快，因为线程释放的资源相比进程少很多；</li>
+<li>同一个进程内的线程切换比进程切换快，因为线程具有相同的地址空间（虚拟内存共享），这意味着<strong>同一个进程的线程都具有同一个页表</strong>，那么在<strong>切换的时候不需要切换页表</strong>。而对于进程之间的切换，切换的时候要把页表给切换掉，而页表的切换过程开销是比较大的；</li>
+<li>由于<strong>同一进程的各线程间共享内存和文件资源</strong>，那么在线程之间数据传递的时候，就<strong>不需要经过内核</strong>了，这就使得线程之间的数据交互效率更高了；</li>
+</ul>
+<hr>
+<h1 id="线程的创建方式">线程的创建方式</h1>
+<h2 id="继承thread类">继承<code>Thread</code>类</h2>
+<p>继承<code>Thread</code>类，重写<code>run</code>方法。run()方法中定义了线程执行的具体任务。创建该类的实例后，通过调用start()方法启动线程。</p>
+<pre><code class="language-java">class MyThread extends Thread {
+    @Override
+    public void run() {
+        // 线程执行的代码
+    }
+}
+
+public static void main(String[] args) {
+    MyThread t = new MyThread();
+    t.start();
+}
+</code></pre>
+<p>采用继承Thread类方式</p>
+<ul>
+<li>优点：直接、清晰，能覆写线程方法并加自定义状态/方法。</li>
+<li>缺点：不能复用线程类用于不同任务（耦合 task 与 thread）；Java 单继承限制（无法再继承别的类）。</li>
+</ul>
+<h2 id="实现runnable接口">实现<code>Runnable</code>接口</h2>
+<pre><code class="language-java">public class WorkerRunnable implements Runnable {
+    private final String name;
+
+    public WorkerRunnable(String name) {
+        this.name = name;
+    }
+
+    @Override
+    public void run() {
+        //
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        Thread t = new Thread(new WorkerRunnable(&quot;task-A&quot;), &quot;thread-A&quot;);
+        t.start();
+    }
+}
+</code></pre>
+<p>把任务与线程分离，可复用任务类，传给 <code>Thread</code> 或线程池。</p>
+<ul>
+<li>优点：任务与线程分离，易复用、易测试；可与线程池配合。</li>
+<li>缺点：无返回值、无法直接抛出受检查异常传回调用者（可用 <code>Callable</code>/<code>Future</code> 代替）。</li>
+</ul>
+<h2 id="实现callable接口使用futuretask类">实现<code>Callable</code>接口/使用<code>FutureTask</code>类</h2>
+<pre><code class="language-java">
+public class CallableExample {
+    static class SumTask implements Callable&lt;Integer&gt; {
+        private final int n;
+        SumTask(int n) { this.n = n; }
+        @Override
+        public Integer call() throws Exception {
+            int sum = 0;
+            for (int i=1;i&lt;=n;i++) sum += i;
+            Thread.sleep(200); // 模拟耗时
+            return sum;
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        // 使用 FutureTask 在单独线程中运行并可复用
+        FutureTask&lt;Integer&gt; futureTask = new FutureTask&lt;&gt;(new SumTask(100));
+        Thread t = new Thread(futureTask, &quot;sum-thread&quot;);
+        t.start();
+
+        // 主线程可以做别的事
+        System.out.println(&quot;Waiting for result...&quot;);
+        Integer result = futureTask.get(1, TimeUnit.SECONDS);
+        System.out.println(&quot;Sum result = &quot; + result);
+    }
+}
+</code></pre>
+<p>当任务需要返回值或抛异常时使用 <code>Callable</code>。</p>
+<p>要因为Thread类的构造器只接受Runnable参数，而<code>FutureTask</code>实现了Runnable接口。</p>
+<p><code>FutureTask</code> 可将 <code>Callable</code> 转为可运行的 <code>Runnable</code>，或直接用于监控/取消任务。</p>
+<ul>
+<li>优点：可返回结果、可抛异常、支持取消和超时。</li>
+<li>缺点：相比单纯 <code>Runnable</code> 稍复杂；如果频繁创建裸线程开销大（推荐结合线程池）。</li>
+</ul>
+<h2 id="使用executorservice线程池">使用<code>ExecutorService</code>线程池</h2>
+<pre><code class="language-java">import java.util.concurrent.*;
+
+public class ExecutorServiceDemo {
+    public static void main(String[] args) throws InterruptedException {
+        ThreadFactory namedFactory = new ThreadFactory() {
+            private final ThreadFactory defaultFactory = Executors.defaultThreadFactory();
+            private final AtomicInteger idx = new AtomicInteger(1);
+            public Thread newThread(Runnable r) {
+                Thread t = defaultFactory.newThread(r);
+                t.setName(&quot;pool-worker-&quot; + idx.getAndIncrement());
+                return t;
+            }
+        };
+
+        ExecutorService pool = Executors.newFixedThreadPool(3, namedFactory);
+
+        for (int i = 0; i &lt; 6; i++) {
+            final int id = i;
+            pool.submit(() -&gt; {
+                //do something
+            });
+        }
+
+        // 优雅关停
+        pool.shutdown();
+        if (!pool.awaitTermination(2, TimeUnit.SECONDS)) {
+            pool.shutdownNow();
+        }
+        System.out.println(&quot;pool terminated&quot;);
+    }
+}
+</code></pre>
+<p>线程池是生产级并发的标准做法：复用线程、控制并发度、统一管理。可以自定义 <code>ThreadFactory</code>、提交任务、优雅关闭。</p>
+<ul>
+<li>优点：高效复用线程、可控制最大并发、统一管理异常/生命周期。</li>
+<li>缺点：需要合理配置池参数（线程数、队列、拒绝策略）；滥用全局单例池可能导致资源争抢/任务延迟。</li>
+</ul>
+<h2 id="使用completablefuture类">使用<code>CompletableFuture</code>类</h2>
+<pre><code class="language-java">import java.util.concurrent.*;
+
+public class CompletableFutureDemo {
+    public static void main(String[] args) {
+        ExecutorService ioPool = Executors.newCachedThreadPool();
+
+        CompletableFuture.supplyAsync(() -&gt; {
+            // 异步获取数据
+            return &quot;raw-data&quot;;
+        }, ioPool)
+        .thenApplyAsync(raw -&gt; {
+            // 转换
+            return raw.toUpperCase();
+        }, ioPool)
+        .thenAccept(result -&gt; {
+            // 使用结果
+            System.out.println(&quot;Got result: &quot; + result);
+        })
+        .exceptionally(ex -&gt; {
+            //异常处理
+            System.err.println(&quot;Error: &quot; + ex.getMessage());
+            return null;
+        });
+
+        ioPool.shutdown();
+    }
+}
+
+</code></pre>
+<p>现代异步编程风格，支持链式、组合、异常处理，适合 I/O 异步或事件驱动逻辑。</p>
+<ul>
+<li>优点：易写链式/组合异步逻辑；良好的异常处理和时间控制；可与 <code>Executor</code> 配合指定线程池。</li>
+<li>缺点：链过长可读性下降；调试栈跟踪不如同步代码直观（但比回调好很多）。</li>
+</ul>
+<h2 id="总结-2">总结</h2>
+<p>严格来说，Java 就只有一种方式可以创建线程，那就是通过<code>new Thread().start()</code>创建。像Runnable、Callable实际上创建的是任务。不管是哪种方式，最终还是依赖于<code>new Thread().start()</code>。</p>
+<h1 id="守护线程是什么">守护线程是什么</h1>
+<p><strong>守护线程</strong>是一种支持性线程，它的存在是为了服务于其他线程（用户线程）。它的生命周期依赖于用户线程，<strong>当所有用户线程都结束时，无论守护线程是否正在执行，JVM都会立即退出，守护线程也会被直接终止</strong>。</p>
+<p>在启动线程之前，通过 <code>setDaemon(true)</code> 方法将一个线程设置为守护线程。<strong>在线程启动后设置会抛出 <code>IllegalThreadStateException</code></strong>。</p>
+<h1 id="进程-线程的状态变化">进程、线程的状态变化</h1>
+<h2 id="进程状态模型">进程状态模型</h2>
+<p>操作系统中进程的状态模型主要有三态模型、五态模型、七态模型。</p>
+<h3 id="三态模型">三态模型</h3>
+<ol>
+<li><strong>运行态</strong>：进程正在CPU上执行。</li>
+<li><strong>就绪态</strong>：进程已获得了除CPU之外的所有必要资源，一旦得到CPU即可立即执行。</li>
+<li><strong>阻塞态</strong>：进程由于等待某个事件（如I/O操作完成、信号量等）而无法继续执行。</li>
+</ol>
+<h3 id="五态模型">五态模型</h3>
+<p>在三态模型的基础上，增加了创建和终止状态。</p>
+<ol>
+<li><strong>创建态</strong>：进程正在被创建，尚未进入就绪状态。操作系统会为其分配PCB、资源等。</li>
+<li><strong>就绪态</strong>：进程已获得了除CPU之外的所有必要资源，一旦得到CPU即可立即执行。</li>
+<li><strong>运行态</strong>：进程正在CPU上执行。</li>
+<li><strong>阻塞态</strong>：进程由于等待某个事件（如I/O操作完成、信号量等）而无法继续执行。</li>
+<li><strong>终止态</strong>：进程已结束运行，操作系统正在回收其占用的资源和PCB。</li>
+</ol>
+<p><strong>状态转换</strong></p>
+<ul>
+<li><strong>NULL → 创建态</strong>：一个新进程被创建。</li>
+<li><strong>创建态 → 就绪态</strong>：系统完成创建过程，将进程加入就绪队列。</li>
+<li><strong>就绪态 → 运行态</strong>：进程调度器选择了这个进程（进程上下文切换）。</li>
+<li><strong>运行态 → 就绪态</strong>：时间片用完，或有更高优先级的进程进入就绪状态（被抢占）。</li>
+<li><strong>运行态 → 阻塞态</strong>：进程请求等待某个事件（如I/O请求）。</li>
+<li><strong>阻塞态 → 就绪态</strong>：进程等待的事件发生了（如I/O完成）。</li>
+<li><strong>运行态 → 终止态</strong>：进程执行完毕，或者出现不可恢复的错误。</li>
+</ul>
+<figure data-type="image" tabindex="4"><img src="https://kanyewestforreal.github.io//post-images/8-%E8%BF%9B%E7%A8%8B%E4%BA%94%E4%B8%AA%E7%8A%B6%E6%80%81.webp" alt="8-进程五个状态" loading="lazy"></figure>
+<h3 id="七态模型">七态模型</h3>
+<p>当系统资源紧张，特别是内存不足时，操作系统需要将一些暂时不能运行的进程<strong>从内存移到外存（磁盘交换区）</strong>，以释放内存空间。这个操作就叫“挂起”。被挂起的进程处于“挂起状态”。</p>
+<ol>
+<li><strong>创建态</strong>：进程正在被创建，尚未进入就绪状态。操作系统会为其分配PCB、资源等。</li>
+<li><strong>就绪态</strong>：进程在<strong>内存</strong>中，并准备好运行，只等待CPU。</li>
+<li><strong>运行态</strong>：进程正在CPU上执行。</li>
+<li><strong>阻塞态</strong>：进程在<strong>内存</strong>中，但正在等待某个事件（如I/O完成）。</li>
+<li><strong>就绪/挂起态</strong>：进程在<strong>外存</strong>中，但已经具备了运行条件（只要被换入内存并得到调度，就能立即运行）。</li>
+<li><strong>阻塞/挂起态</strong>：进程在<strong>外存</strong>中，并且正在等待某个事件。</li>
+<li><strong>终止态</strong>：进程已结束运行，操作系统正在回收其占用的资源和PCB。、</li>
+</ol>
+<figure data-type="image" tabindex="5"><img src="https://kanyewestforreal.github.io//post-images/10-%E8%BF%9B%E7%A8%8B%E4%B8%83%E4%B8%AD%E7%8A%B6%E6%80%81.webp" alt="10-进程七中状态" loading="lazy"></figure>
+<p>导致进程挂起的原因不只是因为进程所使用的内存空间不足，还包括如下情况：</p>
+<ul>
+<li>通过 sleep 让进程挂起。</li>
+<li>用户主动挂起一个程序的执行。</li>
+</ul>
+<h3 id="pcb">PCB</h3>
+<p><strong>进程描述信息：</strong></p>
+<ul>
+<li>进程标识符：标识各个进程，每个进程都有一个并且唯一的标识符；</li>
+<li>用户标识符：进程归属的用户，用户标识符主要为共享和保护服务；</li>
+</ul>
+<p><strong>进程控制和管理信息：</strong></p>
+<ul>
+<li>进程当前状态</li>
+<li>进程优先级：进程抢占 CPU 时的优先级；</li>
+</ul>
+<p><strong>资源分配清单：</strong></p>
+<ul>
+<li>有关内存地址空间或虚拟地址空间的信息，所打开文件的列表和所使用的 I/O 设备信息。</li>
+</ul>
+<p><strong>CPU 相关信息：</strong></p>
+<ul>
+<li>CPU 中各个寄存器的值，当进程被切换时，CPU 的状态信息都会被保存在相应的 PCB 中，以便进程重新执行时，能从断点处继续执行。</li>
+</ul>
+<p>Linux中的PCB就是<code>task_struct</code>。</p>
+<h3 id="进程的创建-终止-阻塞-唤醒">进程的创建、终止、阻塞、唤醒</h3>
+<p><strong>01 创建进程</strong></p>
+<p>操作系统允许一个进程创建另一个进程，而且允许子进程继承父进程所拥有的资源。</p>
+<p>创建进程的过程如下：</p>
+<ul>
+<li>申请一个空白的 PCB，并向 PCB 中填写一些控制和管理进程的信息，比如进程的唯一标识等；</li>
+<li>为该进程分配运行时所必需的资源，比如内存资源；</li>
+<li>将 PCB 插入到就绪队列，等待被调度运行；</li>
+</ul>
+<blockquote>
+<p>UNIX：fork/exec<br>
+WINDOWS：CreateProcess</p>
+</blockquote>
+<p><strong>02 终止进程</strong></p>
+<p>进程可以有 3 种终止方式：正常结束、异常结束以及外界干预（信号 <code>kill</code> 掉）。</p>
+<p>当子进程被终止时，其在父进程处继承的资源应当还给父进程。而当父进程被终止时，该父进程的子进程就变为孤儿进程，会被 1 号进程收养，并由 1 号进程对它们完成状态收集工作。</p>
+<p>终止进程的过程如下：</p>
+<ul>
+<li>查找需要终止的进程的 PCB；</li>
+<li>如果处于执行状态，则立即终止该进程的执行，然后将 CPU 资源分配给其他进程；</li>
+<li>如果其还有子进程，则应将该进程的子进程交给 1 号进程接管；</li>
+<li>将该进程所拥有的全部资源都归还给操作系统；</li>
+<li>将其从 PCB 所在队列中删除；</li>
+</ul>
+<blockquote>
+<p>UNIX：exit<br>
+WINDOWS：TerminateProcess</p>
+</blockquote>
+<p><strong>03 阻塞进程</strong></p>
+<p>当进程需要等待某一事件完成时，它可以调用阻塞语句把自己阻塞等待。而一旦被阻塞等待，它只能由另一个进程唤醒。</p>
+<p>阻塞进程的过程如下：</p>
+<ul>
+<li>找到将要被阻塞进程标识号对应的 PCB；</li>
+<li>如果该进程为运行状态，则保护其现场，将其状态转为阻塞状态，停止运行；</li>
+<li>将该 PCB 插入到阻塞队列中去；</li>
+</ul>
+<blockquote>
+<p>UNIX：wait<br>
+WINDOWS：WaitForSingleObject</p>
+</blockquote>
+<p><strong>04 唤醒进程</strong></p>
+<p>进程由「运行」转变为「阻塞」状态是由于进程必须等待某一事件的完成，所以处于阻塞状态的进程是绝对不可能叫醒自己的。</p>
+<p>如果某进程正在等待 I/O 事件，需由别的进程发消息给它，则只有当该进程所期待的事件出现时，才由发现者进程用唤醒语句叫醒它。</p>
+<p>唤醒进程的过程如下：</p>
+<ul>
+<li>在该事件的阻塞队列中找到相应进程的 PCB；</li>
+<li>将其从阻塞队列中移出，并置其状态为就绪状态；</li>
+<li>把该 PCB 插入到就绪队列中，等待调度程序调度；</li>
+</ul>
+<p>进程的阻塞和唤醒是一对功能相反的语句，如果某个进程调用了阻塞语句，则必有一个与之对应的唤醒语句。</p>
+<h2 id="线程六态">线程六态</h2>
+<figure data-type="image" tabindex="6"><img src="https://kanyewestforreal.github.io//post-images/JVM_Thread_State_MA.webp" alt="JVM_Thread_State_MA" loading="lazy"></figure>
+<p>其中Java线程的RUNNABLE状态，对应操作系统级进程/线程的两个状态：RUNNING运行中、READY就绪。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">线程状态</th>
+<th style="text-align:left">解释</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">NEW</td>
+<td style="text-align:left">尚未启动的线程状态，即线程创建，<strong>还未调用start方法</strong></td>
+</tr>
+<tr>
+<td style="text-align:left">RUNNABLE</td>
+<td style="text-align:left"><strong>就绪状态</strong>（调用start，等待调度）+<strong>正在运行</strong></td>
+</tr>
+<tr>
+<td style="text-align:left">BLOCKED</td>
+<td style="text-align:left"><strong>等待监视器锁</strong>时，陷入阻塞状态</td>
+</tr>
+<tr>
+<td style="text-align:left">WAITING</td>
+<td style="text-align:left">等待状态的线程正在<strong>等待</strong>另一线程执行特定的操作（如notify）</td>
+</tr>
+<tr>
+<td style="text-align:left">TIMED_WAITING</td>
+<td style="text-align:left">具有<strong>指定等待时间</strong>的等待状态</td>
+</tr>
+<tr>
+<td style="text-align:left">TERMINATED</td>
+<td style="text-align:left">线程完成执行，<strong>终止状态</strong></td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-java">// Thread.State 源码
+public enum State {
+    NEW,
+    RUNNABLE,
+    BLOCKED,
+    WAITING,
+    TIMED_WAITING,
+    TERMINATED;
+}
+
+// Thread.getState方法源码：
+public State getState() {
+    // get current thread state
+    return sun.misc.VM.toThreadState(threadStatus);
+}
+</code></pre>
+<h3 id="new">NEW</h3>
+<p>没有调用 Thread 实例的<code>start()</code>方法。只是创建了线程而并没有调用 start 方法，此时线程处于 NEW 状态。</p>
+<pre><code class="language-java">private void createThread() {
+    Thread thread = new Thread(() -&gt; {});
+    System.out.println(thread.getState()); // 输出 NEW
+}
+</code></pre>
+<h3 id="runnable">RUNNABLE</h3>
+<p>调用start方法，线程从NEW状态转变为RUNNABLE状态。线程已经启动，正在Java虚拟机中执行，或者等待操作系统的资源（如CPU）。注意，在RUNNABLE状态中，线程可能正在运行，也可能准备运行，这取决于操作系统的调度。</p>
+<p>线程可能因为操作系统的调度而处于就绪（ready）或运行（running）状态，但这在Java线程状态中统一为RUNNABLE。</p>
+<h4 id="注意">注意</h4>
+<p><strong>从操作系统层面</strong>来说，线程在等待IO时是阻塞的，不占用CPU，<strong>不是可运行Runnable状态</strong>。</p>
+<p>但是，在HotSpot <strong>JVM</strong>的具体实现中，通过 <code>Thread.getState()</code> 方法查询，<strong>线程在等待IO时，它的状态通常被报告为 <code>RUNNABLE</code></strong>，这需要我们结合其他工具（如jstack, async-profiler）来准确判断线程是在忙计算还是在等待I/O。</p>
+<p>这就是JVM 与 操作系统的线程状态模型不完全一致的情况之一。</p>
+<h4 id="如果多次调用start方法会如何">如果多次调用start方法会如何？</h4>
+<h4 id="可以在终止状态terminated调用吗">可以在终止状态TERMINATED调用吗？</h4>
+<pre><code class="language-java">// 使用synchronized关键字保证这个方法是线程安全的
+public synchronized void start() {
+    // threadStatus初始值为0
+    // threadStatus != 0 表示这个线程已经被启动过或已经结束了
+    // 如果试图再次启动这个线程，就会抛出IllegalThreadStateException异常
+    if (threadStatus != 0)
+        throw new IllegalThreadStateException();
+
+    // 将这个线程添加到当前线程的线程组中
+    group.add(this);
+
+    // 声明一个变量，用于记录线程是否启动成功
+    boolean started = false;
+    try {
+        // 使用native方法启动这个线程
+        start0();
+        // 如果没有抛出异常，那么started被设为true，表示线程启动成功
+        started = true;
+    } finally {
+        // 在finally语句块中，无论try语句块中的代码是否抛出异常，都会执行
+        try {
+            // 如果线程没有启动成功，就从线程组中移除这个线程
+            if (!started) {
+                group.threadStartFailed(this);
+            }
+        } catch (Throwable ignore) {
+            // 如果在移除线程的过程中发生了异常，我们选择忽略这个异常
+        }
+    }
+}
+</code></pre>
+<p>从<code>threadStatus</code>这个变量来看，就能确定start方法不能多次调用。在TERMINATED状态调用start时，也会报错。因为其在native方法中被修改，不会被重复赋值为0。</p>
+<pre><code class="language-cpp">//https://stackoverflow.com/questions/53406078/java-lang-thread-where-does-threadstatus-come-from
+// Write the thread status value to threadStatus field in java.lang.Thread java class.
+void java_lang_Thread::set_thread_status(oop java_thread,
+                                         java_lang_Thread::ThreadStatus status) {
+  // The threadStatus is only present starting in 1.5
+  if (_thread_status_offset &gt; 0) {
+    java_thread-&gt;int_field_put(_thread_status_offset, status);
+  }
+}
+</code></pre>
+<p>在调用<code>Thread#start</code>方法前，这里认为，Java线程NEW状态没有对应操作系统线程的任一状态，因为内核线程还未被开始创建。</p>
+<p>在调用<code>Thread#start</code>方法后，Java才通过系统API创建了对应的内核线程。</p>
+<h3 id="blocked">BLOCKED</h3>
+<p>线程被阻塞。</p>
+<p>等待一个锁释放以进入临界区；</p>
+<p>在调用<code>Object.wait()</code>方法后，被notify唤醒重新进入临界区时被又被阻塞，通常发生在竞争同步资源时。</p>
+<h3 id="waiting">WAITING</h3>
+<p>线程处于等待状态，直到其他线程执行特定的动作后被唤醒。</p>
+<p>线程进入等待状态是通过调用以下方法之一：</p>
+<ul>
+<li><code>Object#wait()</code> without timeout</li>
+<li><code>Thread#join()</code> without timeout</li>
+<li><code>LockSupport#park()</code></li>
+</ul>
+<p>在WAITING状态，线程等待另一个线程的通知（如<code>Object.notify()</code>或<code>Object.notifyAll()</code>）或者等待另一个线程结束（如<code>Thread.join()</code>）。</p>
+<h3 id="timed_waiting">TIMED_WAITING</h3>
+<p>线程在指定的时间范围内等待。与WAITING类似，但有一个超时时间。通过以下方法可以进入TIMED_WAITING状态：</p>
+<ul>
+<li><code>Thread.sleep(long millis)</code></li>
+<li><code>Object.wait(long timeout)</code></li>
+<li><code>Thread.join(long millis)</code></li>
+<li><code>LockSupport.parkNanos(long nanos)</code></li>
+<li><code>LockSupport.parkUntil(long deadline)</code></li>
+</ul>
+<h3 id="terminated">TERMINATED</h3>
+<p>线程执行完毕或者因为异常退出而终止时处于该状态。</p>
+<p>终止状态分为两种情况：</p>
+<ul>
+<li>调用run方法，正常执行完毕后，线程自然终止。</li>
+<li>没有捕获的异常终止了run方法，使线程意外终止。</li>
+</ul>
+<p>一旦进入终止状态，线程将不再拥有运行的资格，也不能再转换到其他状态，生命周期结束。</p>
+<h3 id="waiting-runnable">WAITING → RUNNABLE</h3>
+<p>根据转换图，知道有 3 个方法可以使线程从 RUNNABLE 状态转为 WAITING 状态。我们主要介绍下<code>Object#wait()</code>和<code>Thread#join()</code>。</p>
+<h4 id="objectwait">Object#wait()</h4>
+<p>调用<code>wait()</code>方法前，<strong>线程必须持有对象的锁</strong>。</p>
+<p>线程调用<code>wait()</code>方法时，<strong>会释放当前的锁</strong>，直到有其他线程对同一个锁对象调用<code>notify()</code>/<code>notifyAll()</code>方法，才可以唤醒等待锁的线程。</p>
+<p>需要注意的是，其他线程调用<code>notify()</code>方法只会唤醒单个等待锁的线程，如有多个线程都在等待这个锁的话，不一定会唤醒到之前调用<code>wait()</code>方法的线程。</p>
+<p>同样，调用<code>notifyAll()</code>方法唤醒所有等待锁的线程之后，刚才wait放弃锁的线程也不一定会获取到锁、获得时间片，具体要看系统的调度（可能存在其他线程竞争）。</p>
+<h4 id="threadjoin">Thread#join()</h4>
+<p>线程T1调用<code>T2.join()</code>方法，T1会一直等待T2线程执行任务完毕（转换为 TERMINATED 状态）。</p>
+<pre><code class="language-java">public static void main(...) {
+    ······
+    a.start();
+    a.join();
+    b.start();
+    System.out.println(a.getName() + &quot;:&quot; + a.getState()); // 输出 TERMINATED
+    System.out.println(b.getName() + &quot;:&quot; + b.getState());
+}
+</code></pre>
+<p>要是没有调用 join 方法，main 线程不管 a 线程是否执行完毕都会继续往下走。</p>
+<p>a 线程启动之后，main线程马上调用了 <code>a.join</code> 方法，这里 main 线程就会等到 a 线程执行完毕，所以这里 a 线程打印的状态<strong>一定是TERMINATED</strong>。</p>
+<p>由于 <code>join()</code> 的阻塞特性，main线程会阻塞在<code>a.join()</code>，a线程任务完成后，<code>b.start()</code> 才执行。</p>
+<p>线程b的状态可能是 <code>RUNNABLE</code> 或 <code>TERMINATED</code>，取决于其执行速度</p>
+<h1 id="sleep-和-wait的区别是什么">sleep 和 wait的区别是什么？</h1>
+<p>对比例表：</p>
+<table>
+<thead>
+<tr>
+<th><strong>特性</strong></th>
+<th><code>sleep()</code></th>
+<th><code>wait()</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>所属类</td>
+<td><code>Thread</code> 类（静态方法）</td>
+<td><code>Object</code> 类（实例方法）</td>
+</tr>
+<tr>
+<td>锁释放</td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>使用前提</td>
+<td>任意位置调用</td>
+<td>必须在同步块内（持有锁）</td>
+</tr>
+<tr>
+<td>唤醒机制</td>
+<td>超时自动恢复</td>
+<td>需 <code>notify()</code>/<code>notifyAll()</code> 或超时</td>
+</tr>
+<tr>
+<td>设计用途</td>
+<td>暂停线程执行，不涉及锁协作</td>
+<td>线程间协调，释放锁让其他线程工作</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>所属分类的不同</strong>：sleep 是 <code>Thread</code> 类的静态方法，可以在任何地方直接通过 <code>Thread.sleep()</code> 调用，无需依赖对象实例。wait 是 <code>Object</code> 类的实例方法，这意味着必须通过对象实例来调用。</li>
+<li><strong>锁释放的情况</strong>：<strong><code>Thread.sleep()</code> 在调用时，线程会暂停执行指定的时间，但不会释放持有的对象锁。<strong>也就是说，在 <code>sleep</code> 期间，其他线程无法获得该线程持有的锁。</strong><code>object.wait()</code>：调用该方法时，线程会释放持有的对象锁</strong>，进入等待状态，直到其他线程调用相同对象的 <code>notify()</code> 或 <code>notifyAll()</code> 方法唤醒它。</li>
+<li><strong>使用条件</strong>：sleep 可在任意位置调用，无需事先获取锁。 wait 必须在同步块或同步方法内调用（即线程需持有该对象的锁），否则抛出 <code>IllegalMonitorStateException</code>。</li>
+<li><strong>唤醒机制</strong>：sleep 休眠时间结束后，<strong>线程 从 TIMED_WAITING 自动恢复 到 RUNNABLE</strong>，等待CPU调度。wait 需要其他线程调用相同锁对象的 <code>lock.notify()</code> 或 <code>lock.notifyAll()</code> 方法才能被唤醒。<code>lock.notify()</code> 会随机唤醒一个在该锁对象上等待的线程，而 <code>lock.notifyAll()</code> 会唤醒所有在该锁对象上等待的线程。</li>
+</ul>
+<h2 id="sleep-yield会释放cpu吗">sleep、yield会释放CPU吗</h2>
+<h3 id="sleep">sleep</h3>
+<p>调用 <code>Thread.sleep()</code> 时，<strong>线程会释放 CPU，但不会释放持有的锁。</strong></p>
+<p><strong>当线程调用</strong> <code>sleep()</code> <strong>后，会主动让出 CPU 时间片</strong>，进入 <code>TIMED_WAITING</code> 状态。此时操作系统会触发调度，将 CPU 分配给其他处于RUNNABLE状态的线程。这样其他线程（无论是需要同一锁的线程还是不相关线程）便有机会执行。</p>
+<p><code>sleep()</code> 不会释放线程已持有的任何锁（如 <code>synchronized</code> 同步代码块或方法中获取的锁）。<strong>因此，如果有其他线程试图获取同一把锁，它们仍会被阻塞，直到原线程退出同步代码块。</strong></p>
+<h3 id="yield">yield</h3>
+<p>同样，<code>Thread.yield()</code> 只是给调度器的**“建议/提示”<strong>：当前线程</strong>让出 CPU 使用权的意图**，但<strong>不保证任何效果</strong>（<strong>调度器可以忽略它</strong>）。</p>
+<p><strong><code>yield()</code> 不会释放持有的锁 / 监视器</strong>。只有 <code>Object.wait()</code> 会释放当前同步块/对象的监视器。</p>
+<p>如果你在持有锁的情况下调用 <code>yield()</code>，其它等待同一锁的线程<strong>仍然无法进入临界区</strong>（因为锁还在你手上），所以这通常<strong>不能</strong>改善并发/公平性，反而可能降低效率或造成误解。</p>
+<p><strong>不要依赖 <code>yield()</code> 控制并发或实现正确性</strong>。用它只适合非常局部的优化（比如短时间的自旋退让），并且要非常谨慎。</p>
+<h1 id="停止线程常用方法">停止线程常用方法</h1>
+<p><code>Thread.interrupt()</code> <strong>只设置中断标志</strong>（<code>Thread.interrupted()</code>/<code>isInterrupted()</code> 可读）。它<strong>不会强制停止线程</strong>，而是<strong>靠被阻塞的 API 或代码</strong>去“响应”这个标志。</p>
+<p>常见库/方法对<strong>中断的响应分成三类</strong>：</p>
+<ol>
+<li><strong>抛出 <code>InterruptedException</code> 并清除中断状态</strong>（典型的可中断阻塞方法，sleep<code>、</code>wait<code>、</code>join<code>、</code>Condition.await<code>、</code>BlockingQueue.take）。</li>
+<li><strong>返回/解除阻塞但不抛出异常，保留或设置中断状态</strong>（比如 <code>LockSupport.park</code>）。</li>
+<li><strong>完全不响应中断（不可中断）</strong>，只有其它手段能把它唤醒（比如 <code>synchronized</code> 的 monitor 获取阻塞、某些传统阻塞 IO）。</li>
+</ol>
+<p>优先使用<strong>协作式取消（interrupt / 标志位 / Executor + Future）</strong>，避免使用已废弃或强行杀死的手段（如 Thread.stop）。</p>
+<p>协作式取消的核心原理是：</p>
+<ol>
+<li><strong>设置标志位</strong>：调用 <code>interrupt()</code> 只是设置线程的中断状态标志</li>
+<li><strong>检查标志位</strong>：被中断的线程需要主动检查这个标志并决定如何响应</li>
+<li><strong>清除状态</strong>：某些方法会响应中断并清除中断状态</li>
+</ol>
+<h2 id="配合处理中断">配合处理中断</h2>
+<p>使用<code>t.interrupt()</code>，设置线程t中断标志（<code>interrupt</code>）。</p>
+<p>如果线程在可中断的阻塞调用，比如预先调用了<code>sleep</code>, <code>wait</code>, <code>join</code>, <code>BlockingQueue.take()</code> 等方法，<strong>这时候设置中断标识，则会抛出 <code>InterruptedException</code>，同时清理该中断标志</strong>，所以尽可能主动处理该异常，进行重新设置中断标识，或者清理资源。</p>
+<p>否则，线程可通过 <code>Thread.interrupted()</code> / <code>Thread.currentThread().isInterrupted()</code> 主动检测中断标识并退出。</p>
+<h2 id="threadinterrupted-vs-tisinterrupted">Thread#interrupted vs t#isInterrupted</h2>
+<p><code>Thread.interrupted()</code>（静态）：查询并<strong>清除</strong>当前线程的中断标志（返回后标志变为 false）</p>
+<p><code>Thread.currentThread().isInterrupted()</code>：查询当前线程的中断标志（<strong>不清除</strong>）。</p>
+<p><strong>适用</strong>：线程会执行阻塞或周期性检查中断状态的场景（大多数情况）。</p>
+<p>示例：</p>
+<pre><code class="language-java">public class InterruptibleThread extends Thread {
+    @Override
+    public void run() {
+        while (!Thread.currentThread().isInterrupted()) {
+            try {
+                // 执行任务
+                System.out.println(&quot;Working...&quot;);
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                // 当线程在阻塞状态被中断时抛出
+                System.out.println(&quot;Thread was interrupted during sleep&quot;);
+                // 重新设置中断状态，因为捕获异常后会清除中断状态
+                Thread.currentThread().interrupt();
+            } finally{
+                //可能需要清理资源
+                cleanUp();
+            }
+        }
+        System.out.println(&quot;Thread stopped via interrupt.&quot;);
+    }
+}
+
+// 使用示例
+InterruptibleThread thread = new InterruptibleThread();
+thread.start();
+
+// 3秒后中断线程
+Thread.sleep(3000);
+thread.interrupt();
+</code></pre>
+<p><strong>注意</strong>：</p>
+<ul>
+<li>捕获 <code>InterruptedException</code> 时通常应该做必要清理，以及恢复中断标志。</li>
+<li><code>interrupt()</code> <strong>只是“请求”中断，不会强制终止线程。</strong></li>
+</ul>
+<h2 id="使用标志位推荐方式">使用标志位（推荐方式）</h2>
+<p>这是最常用且安全的线程停止方式，通过设置一个 volatile 标志位或 <code>AtomicBoolean</code>，来控制线程执行。</p>
+<pre><code class="language-java">public class ThreadWithFlag extends Thread {
+    private volatile boolean stopped = false;
+    
+    @Override
+    public void run() {
+        while (!stopped) {
+            // 执行任务
+            System.out.println(&quot;Thread is running...&quot;);
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        System.out.println(&quot;Thread stopped gracefully.&quot;);
+    }
+    
+    public void stopThread() {
+        stopped = true;
+    }
+}
+
+// 使用示例
+ThreadWithFlag thread = new ThreadWithFlag();
+thread.start();
+
+// 3秒后停止线程
+Thread.sleep(3000);
+thread.stopThread();	
+</code></pre>
+<h2 id="使用-executorservice-关闭线程池">使用 ExecutorService 关闭线程池</h2>
+<p>对于使用线程池的情况，可以使用 ExecutorService 的关闭方法。</p>
+<pre><code class="language-java">public class ExecutorServiceExample {
+    public static void main(String[] args) throws InterruptedException {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        
+        // 提交任务
+        executor.submit(() -&gt; {
+            while (!Thread.currentThread().isInterrupted()) {
+                System.out.println(&quot;Task running...&quot;);
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        });
+        
+        Thread.sleep(2000);
+        
+        // 方式1: 平缓关闭 - 等待正在执行的任务完成
+        executor.shutdown();
+        
+        // 方式2: 立即关闭 - 尝试停止所有正在执行的任务
+        // List&lt;Runnable&gt; notExecutedTasks = executor.shutdownNow();
+        
+        // 等待线程池终止
+        if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+            System.out.println(&quot;Forcing shutdown...&quot;);
+            executor.shutdownNow();
+        }
+    }
+}
+</code></pre>
+<h2 id="使用-future-取消任务">使用 Future 取消任务</h2>
+<p>当使用 Callable 或 Runnable 配合 Future 时，可以通过 Future 来取消任务。</p>
+<pre><code class="language-java">public class FutureCancelExample {
+    public static void main(String[] args) throws Exception {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        
+        Future&lt;?&gt; future = executor.submit(() -&gt; {
+            int count = 0;
+            while (!Thread.currentThread().isInterrupted() &amp;&amp; count &lt; 100) {
+                System.out.println(&quot;Count: &quot; + count++);
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return count;
+        });
+        
+        Thread.sleep(1000);
+        
+        // 取消任务，true 表示如果任务正在运行则中断它
+        boolean cancelled = future.cancel(true);
+        System.out.println(&quot;Task cancelled: &quot; + cancelled);
+        
+        executor.shutdown();
+    }
+}
+</code></pre>
+<h2 id="关闭中断阻塞-io">关闭/中断阻塞 IO</h2>
+<p>有些阻塞（如传统的 <code>InputStream.read()</code>、某些 native IO）<strong>未必响应 <code>interrupt()</code></strong>。</p>
+<p>解决办法：</p>
+<ul>
+<li>
+<p>使用支持中断的 NIO 通道（<code>SocketChannel</code> 的 <code>close()</code> 会使阻塞操作抛异常）。</p>
+</li>
+<li>
+<p>调用 <code>close()</code> 关闭 socket/stream，从而让阻塞调用抛出 <code>IOException</code>，在 catch 中退出线程。</p>
+</li>
+<li>
+<p>使用 <code>interruptible</code> API 或可超时版本（<code>Socket.setSoTimeout()</code>）组合轮询。</p>
+</li>
+</ul>
+<p>示例：</p>
+<pre><code class="language-java">try (Socket socket = ...) {
+    InputStream in = socket.getInputStream();
+    while (!Thread.currentThread().isInterrupted()) {
+        int b = in.read(); // 可能阻塞
+        if (b &lt; 0) break;
+    }
+} catch (IOException e) {
+    // 可能是 close() 导致，进行清理并退出
+}
+</code></pre>
+<p><strong>注意</strong>：有些 native 方法或第三方库的阻塞调用可能完全不响应中断，这种情形需要通过关闭底层资源或考虑把工作放到独立进程并 kill 进程。</p>
+<h2 id="synchronized可以中断吗">synchronized可以中断吗？</h2>
+<p><code>synchronized</code>在持有锁时可以中断。<strong>synchronized在阻塞等待锁</strong>时不可中断。</p>
+<pre><code class="language-java">//在取得lock前，interrupt()无法中断synchronized
+synchronized(lock) {
+    // 只有当线程已经拿到锁才会执行这里
+    // 调用 interrupt() 只会设置中断标志，不会使它立刻抛 InterruptedException 或返回
+    lock.wait(); // wait是可中断的阻塞，中断会抛 InterruptedException
+}
+</code></pre>
+<p><code>ReentrantLock</code> 在持有锁时可以中断（<code>interrupt</code>方法，设置标志位），在阻塞等待锁时可以中断（使用<code>lock.lockInterruptibly</code>）。</p>
+<p>因为调用 <code>Thread#interrupt()</code> 只是设置线程的中断状态标志，不会返回、抛出异常。</p>
+<h2 id="小结">小结</h2>
+<table>
+<thead>
+<tr>
+<th>场景 / API</th>
+<th>中断时行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Thread.interrupt()</code>（调用方）</td>
+<td>仅设置标志，不直接抛异常</td>
+</tr>
+<tr>
+<td><code>Thread.sleep()</code> / <code>Object.wait()</code> / <code>Condition.await()</code>/<code>Thread.join()</code></td>
+<td>可中断，抛 <code>InterruptedException</code>，并<strong>清除</strong>中断标志</td>
+</tr>
+<tr>
+<td><code>BlockingQueue.take()</code> / <code>Semaphore.acquire()</code> / <code>Condition.await()</code></td>
+<td>抛 <code>InterruptedException</code></td>
+</tr>
+<tr>
+<td><code>ReentrantLock.lock()</code></td>
+<td>不抛，等待不可中断（但中断标志被设置，可以通过标志返回退出）</td>
+</tr>
+<tr>
+<td><code>ReentrantLock.lockInterruptibly()</code></td>
+<td><strong>可中断</strong>地等待锁；如果等待期间收到中断，会抛 <code>InterruptedException</code> 并且不会获得锁。</td>
+</tr>
+<tr>
+<td><code>synchronized</code>尝试锁</td>
+<td>获取锁时<strong>不可中断</strong></td>
+</tr>
+<tr>
+<td><code>LockSupport.park()</code></td>
+<td>返回但不抛异常；若因中断返回则<strong>中断标志保持为 true</strong></td>
+</tr>
+</tbody>
+</table>
+<h1 id="线程安全的分类">线程安全的分类</h1>
+<p>按照线程安全的“安全程度”由强到弱来排序，分为以下5类：</p>
+<p>不可变、绝对线程安全、相对线程安全、线程兼容和线程对立。</p>
+<h2 id="不可变">不可变</h2>
+<p>不可变对象一定是线程安全的。因不可变对象创建出来后，对于外部来说，其可见性永远不会改变。</p>
+<p>1）共享数据是基本数据类型。定义时使用final关键字修饰即可保证不可变。</p>
+<p>2）共享数据是对象，保证对象的行为不会对其状态产生任何改变才行。</p>
+<p>java.lang.String类的对象是不可变对象，substring()、replace()等方法不会改变原来的值，只会返回一个新构造的字符串对象。</p>
+<p>保证对象行为不影响自己状态的最简单方法，把对象中带有状态的变量都声明为final。</p>
+<p>Java中的不可变类，String、枚举类型、Long、Double、BigInteger、BigDecimal。</p>
+<h2 id="绝对线程安全">绝对线程安全</h2>
+<p>“不管运行时环境如何，<strong>调用者</strong>都不需要进行任何额外的同步措施”。</p>
+<p>Java API中标注线程安全的类，大多都不是绝对线程安全。</p>
+<p>Vector的set()，get()，remove()，size()都是同步的，但是不采取适当的同步措施的话，代码仍是不安全的。</p>
+<h2 id="相对线程安全">相对线程安全</h2>
+<p>通常意义上的线程安全，需要保证对这个对象单独的操作是线程安全的，无需额外保证措施，但是对于特定顺序的连续调用，需要在调用时使用额外的同步手段保证调用的正确性。</p>
+<p>Java中，大多数的线程安全类都属于这种类型，如<code>Vector</code>、<code>HashTable</code>、<code>Collections.synchronizedCollection()</code>方法包装过的集合。</p>
+<p>Vector的set()，get()，remove()，size()都是同步的，但是不采取适当的同步措施的话，代码仍是不安全的。</p>
+<p>对于下面的代码，如果删除元素的线程删除了 Vector 的一个元素，而获取元素的线程试图访问一个已经被删除的元素，那么就会抛出 <code>ArrayIndexOutOfBoundsException</code>。</p>
+<pre><code class="language-Java">public class VectorUnsafeExample {
+    private static Vector&lt;Integer&gt; vector = new Vector&lt;&gt;();
+
+    public static void main(String[] args) {
+        while (true) {
+            for (int i = 0; i &lt; 100; i++) {
+                vector.add(i);
+            }
+            ExecutorService executorService = Executors.newCachedThreadPool();
+            executorService.execute(() -&gt; {
+                for (int i = 0; i &lt; vector.size(); i++) {
+                    vector.remove(i);
+                }
+            });
+            executorService.execute(() -&gt; {
+                for (int i = 0; i &lt; vector.size(); i++) {
+                    vector.get(i);
+                }
+            });
+            executorService.shutdown();
+        }
+    }
+}
+</code></pre>
+<pre><code class="language-java">Exception in thread &quot;Thread-159738&quot; java.lang.ArrayIndexOutOfBoundsException: Array index out of range: 3
+    at java.util.Vector.remove(Vector.java:831)
+    at VectorUnsafeExample.lambda$main$0(VectorUnsafeExample.java:14)
+    at VectorUnsafeExample$$Lambda$1/713338599.run(Unknown Source)
+    at java.lang.Thread.run(Thread.java:745)
+</code></pre>
+<p>如果要保证上面的代码能正确执行下去，就需要对删除元素和获取元素的代码进行同步。</p>
+<pre><code class="language-java">executorService.execute(() -&gt; {
+    synchronized (lock) {
+        for (int i = 0; i &lt; vector.size(); i++) {
+            vector.remove(i);
+        }
+    }
+});
+executorService.execute(() -&gt; {
+    synchronized (lock) {
+        for (int i = 0; i &lt; vector.size(); i++) {
+            vector.get(i);
+        }
+    }
+});
+</code></pre>
+<h2 id="线程兼容">线程兼容</h2>
+<p>指对象本身不是线程安全的，可以在调用时使用同步等手段保证对象在并发环境下可以安全被被使用。</p>
+<p>我们平时说一个类不是线程安全的，指的就是这种情况。如ArrayList和HashMap。</p>
+<h2 id="线程对立">线程对立</h2>
+<p>指无论调用端是否采用了同步措施，都无法保证对象在多线程环境中被安全使用。</p>
+<p>例子：Thread类的suspend()方法和resume()方法。两个线程同时对同一个线程对象调用，一个调用suspend()，一个调用resume()，可能导致死锁。</p>
+<p>正是这个原因，这两个方法被JDK声明为@Deprecated。</p>
+<h1 id="如何实现线程安全">如何实现线程安全</h1>
+<h2 id="互斥同步">互斥同步</h2>
+<p>互斥同步最主要的问题就是线程阻塞和唤醒所带来的性能问题，因此这种同步也称为阻塞同步。</p>
+<p>互斥同步属于一种悲观的并发策略。</p>
+<h3 id="synchronized-关键字">synchronized 关键字</h3>
+<p>使用场景</p>
+<ul>
+<li><strong>简单计数器</strong>：对共享变量的简单操作</li>
+<li><strong>资源互斥访问</strong>：如文件操作、数据库连接等</li>
+<li><strong>单例模式实现</strong>：双重检查锁定</li>
+</ul>
+<h3 id="lock-接口及其实现">Lock 接口及其实现</h3>
+<p>ReentrantLock、读写锁 (ReadWriteLock)</p>
+<p>使用场景</p>
+<ul>
+<li><strong>需要尝试获取锁</strong>：<code>tryLock()</code> 方法</li>
+<li><strong>需要公平锁</strong>：避免线程饥饿</li>
+<li><strong>读写分离场景</strong>：读多写少的缓存系统</li>
+<li><strong>需要中断响应</strong>：<code>lockInterruptibly()</code></li>
+</ul>
+<h2 id="非阻塞同步">非阻塞同步</h2>
+<p>可以使用基于冲突检测的乐观并发策略: 先进行操作，如果没有其它线程争用共享数据，那操作就成功了，否则采取补偿措施(不断地重试，直到成功为止)。这种乐观的并发策略的许多实现都不需要将线程阻塞，因此这种同步操作称为非阻塞同步。</p>
+<h3 id="只需要可见性volatile">只需要可见性：<code>volatile</code></h3>
+<h3 id="原子类cas">原子类/CAS</h3>
+<p>硬件支持的原子性操作最典型的是: 比较并交换(Compare-and-Swap，CAS)。CAS 指令需要有 3 个操作数，分别是内存地址 V、旧的预期值 A 和新值 B。当执行操作时，只有当 V 的值等于 A，才将 V 的值更新为 B。</p>
+<p>类：<code>AtomicInteger</code>, <code>AtomicLong</code>, <code>AtomicReference</code>, <code>AtomicReferenceFieldUpdater</code> 等，以及 <code>LongAdder</code>、<code>LongAccumulator</code>。</p>
+<p>注意ABA问题：</p>
+<p>如果一个变量初次读取的时候是 A 值，它的值被改成了 B，后来又被改回为 A，那 CAS 操作就会误认为它从来没有被改变过。</p>
+<p>J.U.C 包提供了一个带有标记的原子引用类 <code>AtomicStampedReference</code> 来解决这个问题，它可以通过控制变量值的版本来保证 CAS 的正确性。大部分情况下 ABA 问题不会影响程序并发的正确性，如果需要解决 ABA 问题，改用传统的互斥同步可能会比原子类更高效。</p>
+<h2 id="无同步方案">无同步方案</h2>
+<p>要保证线程安全，并不是一定就要进行同步。如果一个方法本来就不涉及共享数据，那它自然就无须任何同步措施去保证正确性。</p>
+<h3 id="栈封闭">栈封闭</h3>
+<p>多个线程访问同一个方法的局部变量时，不会出现线程安全问题，因为局部变量存储在虚拟机栈中，属于线程私有的。</p>
+<h3 id="threadlocal">ThreadLocal</h3>
+<p>为每个线程提供独立的变量副本，避免共享。</p>
+<pre><code class="language-java">public class UserContext {
+    private static final ThreadLocal&lt;User&gt; currentUser = new ThreadLocal&lt;&gt;();
+    
+    public static void setCurrentUser(User user) {
+        currentUser.set(user);
+    }
+    
+    public static User getCurrentUser() {
+        return currentUser.get();
+    }
+    
+    public static void clear() {
+        currentUser.remove();
+    }
+}
+
+// 使用示例
+public class UserService {
+    public void processRequest() {
+        User user = getUserFromRequest();
+        UserContext.setCurrentUser(user);
+        try {
+            // 业务处理，任何地方都可以获取当前用户
+            businessLogic();
+        } finally {
+            UserContext.clear(); // 防止内存泄漏
+        }
+    }
+}
+</code></pre>
+<p>使用场景</p>
+<ul>
+<li><strong>用户会话管理</strong>：Web应用中的用户上下文</li>
+<li><strong>数据库连接</strong>：某些框架的连接管理</li>
+<li><strong>避免参数传递</strong>：在调用链中隐式传递参数</li>
+</ul>
+<p><strong>注意</strong>：防止内存泄漏，尤其在线程池中需手动 <code>remove()</code>。</p>
+<h2 id="不可变对象">不可变对象</h2>
+<p>final修饰共享数据，一旦构造完成，状态不变，天然线程安全（只要正确发布）。</p>
+<h2 id="并发集合与队列">并发集合与队列</h2>
+<p><strong>类</strong>：<code>ConcurrentHashMap</code>, <code>ConcurrentLinkedQueue</code>, <code>CopyOnWriteArrayList</code>, <code>BlockingQueue</code>（<code>ArrayBlockingQueue</code>, <code>LinkedBlockingQueue</code>）等。</p>
+<p><strong>特点</strong>：</p>
+<ul>
+<li><code>ConcurrentHashMap</code>：高并发读写，分段/桶级别并发。</li>
+<li><code>CopyOnWriteArrayList</code>：写少读多场景（写时复制，读无需锁）。</li>
+<li><code>BlockingQueue</code>：用于生产者-消费者，自动阻塞/唤醒。</li>
+</ul>
+<p><strong>示例（生产者-消费者）</strong>：</p>
+<pre><code class="language-java">BlockingQueue&lt;String&gt; q = new LinkedBlockingQueue&lt;&gt;();
+// producer: q.put(item);
+// consumer: String item = q.take();
+</code></pre>
+<p><strong>使用场景</strong>：共享集合需要线程安全访问时、任务队列、读多写少集合、并发 Map 操作（缓存、计数器映射）。</p>
+<h2 id="juc工具类">JUC工具类</h2>
+<p>使用<code>java.util.concurrent</code>包中提供的同步工具类，如<code>CountDownLatch</code>、<code>CyclicBarrier</code>、<code>Semaphore</code>等。</p>
+<p><strong>使用场景</strong>：</p>
+<ul>
+<li><code>CountDownLatch</code>：允许一个或多个线程等待其他线程完成操作。</li>
+<li><code>CyclicBarrier</code>：让一组线程到达一个屏障（同步点）时被阻塞，直到最后一个线程到达屏障时，屏障才会打开，所有被屏障拦截的线程才会继续运行。</li>
+<li><code>Semaphore</code>：控制同时访问特定资源的线程数量。</li>
+</ul>
+<h1 id="如何查看哪些线程持有哪些锁">如何查看哪些线程持有哪些锁？</h1>
+<p>Java 在运行时通过<strong>对象头（mark word） + monitor（ObjectMonitor）机制跟踪 <code>synchronized</code> 的拥有者，通过AQS/同步器内部字段</strong>跟踪 <code>ReentrantLock</code> 等的拥有者；</p>
+<p>要 <strong>查看</strong> 哪些线程持有哪些锁，最方便的方式是用 <code>jstack -l</code>/<code>jcmd Thread.print</code>（离线分析）或在程序里用 <code>ThreadMXBean.getThreadInfo(..., true, true)</code>（在线分析）。</p>
+<hr>
+<h1 id="线程池">线程池</h1>
+<p>线程池就是管理一系列线程的资源池，其提供了一种限制和管理线程资源的方式。每个线程池还维护一些基本统计信息，例如已完成任务的数量。</p>
+<ul>
+<li><strong>降低资源消耗</strong>:通过复用已创建的线程，降低线程重复创建、销毁造成的消耗。</li>
+<li><strong>提高响应速度</strong>:当任务到达时，任务可以不需要等到线程创建就能立即执行。</li>
+<li><strong>提高线程的可管理性</strong>:使用线程池可以进行统一的管理。</li>
+</ul>
+<h2 id="executor-类图">Executor 类图</h2>
+<figure data-type="image" tabindex="7"><img src="https://kanyewestforreal.github.io//post-images/Executor_UML.drawio_wm.png" alt="Executor_UML" loading="lazy"></figure>
+<h2 id="executor使用流程图">Executor使用流程图</h2>
+<figure data-type="image" tabindex="8"><img src="https://kanyewestforreal.github.io//post-images/Executor_Using_Proc.mmd_wm.png" alt="Executor_Using_Proc" loading="lazy"></figure>
+<h2 id="threadpoolexecutor">ThreadPoolExecutor</h2>
+<p>线程池实现类 <code>ThreadPoolExecutor</code> 是 <code>Executor</code> 框架最核心的类。</p>
+<h3 id="构造方法与参数分析">构造方法与参数分析</h3>
+<pre><code class="language-java">//使用给定的初始参数创建新的 ThreadPoolExecutor 。
+
+public ThreadPoolExecutor(int corePoolSize,
+                          int maximumPoolSize,
+                          long keepAliveTime,
+                          TimeUnit unit,
+                          BlockingQueue&lt;Runnable&gt; workQueue,
+                          ThreadFactory threadFactory,
+                          RejectedExecutionHandler handler) {
+    if (corePoolSize &lt; 0 ||
+        maximumPoolSize &lt;= 0 ||
+        maximumPoolSize &lt; corePoolSize ||
+        keepAliveTime &lt; 0)
+        throw new IllegalArgumentException();
+    if (workQueue == null || threadFactory == null || handler == null)
+        throw new NullPointerException();
+    this.corePoolSize = corePoolSize;
+    this.maximumPoolSize = maximumPoolSize;
+    this.workQueue = workQueue;
+    this.keepAliveTime = unit.toNanos(keepAliveTime);
+    this.threadFactory = threadFactory;
+    this.handler = handler;
+}
+</code></pre>
+<h4 id="corepoolsize">corePoolSize</h4>
+<p>线程池核心线程数量。</p>
+<p>默认情况下，线程池中线程的数量如果 &lt;= <code>corePoolSize</code>，那么即使这些线程处于空闲状态，那也不会被销毁。</p>
+<h4 id="maximumpoolsize">maximumPoolSize</h4>
+<p>线程池能创建的最大线程总数（包括核心线程和非核心线程）。</p>
+<p>当线程池的线程数量 &gt; <code>corePoolSize</code> &amp;&amp; 任务队列已满 &amp;&amp; 当前线程数 &lt; <code>maximumPoolSize</code>，就会创建新线程执行此任务。</p>
+<p>但是当前线程数 &gt; <code>maximumPoolSize</code> &amp;&amp; 任务队列已满，就会执行拒绝策略。</p>
+<h4 id="workqueue">workQueue</h4>
+<p>工作队列。新任务来的时候会先判断当前运行的线程数量是否达到核心线程数<code>corePoolSize</code>（是否有空闲的线程），如果达到的话，新任务就会被存放在队列中，等待执行。</p>
+<h4 id="keepalivetime">keepAliveTime</h4>
+<p>当线程池中线程的数量大于<code>corePoolSize</code>，并且某个线程的空闲时间超过了<code>keepAliveTime</code>，那么这个线程就会被销毁。</p>
+<p>有关线程池的核心线程回收机制：</p>
+<p><code>ThreadPoolExecutor</code> <strong>默认不会回收核心线程</strong>，即使它们已经空闲了。这是为了减少创建线程的开销，因为核心线程通常是要长期保持活跃的。但是，如果线程池是被用于周期性使用的场景，且频率不高（周期之间有明显的空闲时间），可以考虑将 <code>allowCoreThreadTimeOut(boolean value)</code> 方法的参数设置为 <code>true</code>，这样就会回收空闲（时间间隔由 <code>keepAliveTime</code> 指定）的核心线程了。</p>
+<h4 id="unit">unit</h4>
+<p>就是<code>keepAliveTime</code>时间的单位。</p>
+<h4 id="threadfactory">threadFactory</h4>
+<p>线程工厂。</p>
+<h4 id="handler">handler</h4>
+<p>拒绝策略。当一个新任务交给线程池时，如果当前线程池中线程的数量 等于<code>maximumPoolSize</code>，就不会创建新线程，就会去执行拒绝策略。</p>
+<p><code>ThreadPoolExecutor</code> 定义的拒绝策略:</p>
+<ul>
+<li><code>ThreadPoolExecutor.AbortPolicy</code>：默认值。抛出 <code>RejectedExecutionException</code>来拒绝新任务的处理。</li>
+<li><code>ThreadPoolExecutor.CallerRunsPolicy</code>：将任务回退给调用者，使用调用者的线程来执行任务，如果调用者的线程已关闭，则会丢弃该任务。</li>
+<li><code>ThreadPoolExecutor.DiscardPolicy</code>：不处理新任务，直接丢弃掉。</li>
+<li><code>ThreadPoolExecutor.DiscardOldestPolicy</code>：此策略将丢弃最早的未处理的任务请求。</li>
+</ul>
+<h3 id="在提交任务前可以提前创建线程吗">在提交任务前，可以提前创建线程吗？</h3>
+<p><code>ThreadPoolExecutor</code> 提供了两个方法帮助我们在提交任务之前，完成核心线程的创建，从而实现线程池预热的效果：</p>
+<ul>
+<li><code>prestartCoreThread()</code>:启动一个线程，等待任务，如果已达到核心线程数，这个方法返回 false，否则返回 true；</li>
+<li><code>prestartAllCoreThreads()</code>:启动所有的核心线程，并返回启动成功的核心线程数。</li>
+</ul>
+<h2 id="工作队列常见类">工作队列常见类</h2>
+<pre><code>BlockingQueue (接口)
+├── ArrayBlockingQueue
+├── LinkedBlockingQueue
+├── PriorityBlockingQueue
+├── DelayQueue
+├── SynchronousQueue
+├── DelayedWorkQueue
+└── LinkedTransferQueue
+</code></pre>
+<h3 id="blockingqueue">BlockingQueue</h3>
+<p><code>BlockingQueue&lt;E&gt;</code> 是一个线程安全的队列，支持当队列为空时等待取元素、或当队列已满时等待放元素的操作，非常适合<strong>生产者-消费者</strong>场景。</p>
+<h4 id="放入元素">放入元素</h4>
+<ul>
+<li><code>void put(E e)</code><br>
+队列已满时 <strong>阻塞</strong> 直到有空间或线程被中断；会抛 <code>InterruptedException</code>。</li>
+<li><code>boolean offer(E e)</code><br>
+立即尝试放入，成功返回 <code>true</code>，失败（满）返回 <code>false</code>，<strong>不阻塞</strong>。</li>
+<li><code>boolean offer(E e, long timeout, TimeUnit unit)</code><br>
+在给定超时时间内等待空间，超时返回 <code>false</code>，可抛 <code>InterruptedException</code>。</li>
+<li><code>boolean add(E e)</code><br>
+继承自 <code>Queue</code>，如果队列满会抛 <code>IllegalStateException</code>（通常少用于有界队列）。</li>
+</ul>
+<h4 id="取出元素">取出元素</h4>
+<ul>
+<li><code>E take()</code><br>
+队列为空时 <strong>阻塞</strong> 直到有元素可用或线程被中断；会抛 <code>InterruptedException</code>。</li>
+<li><code>E poll()</code><br>
+立即取出并返回元素，若为空返回 <code>null</code>（<strong>不阻塞</strong>）。</li>
+<li><code>E poll(long timeout, TimeUnit unit)</code><br>
+在给定超时时间内等待元素，超时返回 <code>null</code>，可抛 <code>InterruptedException</code>。</li>
+<li><code>E remove()</code> / <code>E element()</code><br>
+继承自 <code>Queue</code>，空时会抛 <code>NoSuchElementException</code>（少用）。</li>
+</ul>
+<h4 id="查看辅助">查看/辅助</h4>
+<ul>
+<li><code>E peek()</code><br>
+立即查看队首，空时返回 <code>null</code>（不移除，也不阻塞）。</li>
+<li><code>int remainingCapacity()</code><br>
+返回还能插入多少元素（对有界队列有意义）。</li>
+<li><code>int drainTo(Collection&lt;? super E&gt; c)</code> / <code>int drainTo(Collection&lt;? super E&gt; c, int maxElements)</code><br>
+一次性把队列中尽可能多（或最多 <code>maxElements</code>）元素移动到指定集合，常用于批量消费以减少开销。<strong>注意</strong>：在某些迭代器同步语义上可能有实现差异。</li>
+</ul>
+<p><strong>注意</strong></p>
+<p><strong>阻塞方法</strong> (<code>put</code>, <code>take</code> 等) 在等待期间可被中断，会抛 <code>InterruptedException</code> —— 调用方通常要处理中断。</p>
+<p><strong>带超时的方法</strong> (<code>offer</code>/<code>poll</code> 带 timeout) 提供在阻塞等待时的时间限制。</p>
+<p><strong>立即返回的方法</strong> (<code>offer</code>、<code>poll</code>、<code>peek</code>) 不会阻塞，适合非阻塞逻辑。</p>
+<h3 id="arrayblockingqueue">ArrayBlockingQueue</h3>
+<ul>
+<li><strong>特点</strong>：基于数组的有界队列。按照FIFO原则对任务进行排序。由于队列有界，当线程池中的线程数达到corePoolSize后，新任务会放入队列，如果队列已满，则会创建新线程（直到达到maximumPoolSize），然后执行拒绝策略。</li>
+<li><strong>使用场景</strong>：适用于需要控制任务队列长度，防止内存溢出的场景。可以平衡吞吐量和资源消耗。</li>
+</ul>
+<h3 id="linkedblockingqueue">LinkedBlockingQueue</h3>
+<p><code>FixedThreadPool</code> 和 <code>SingleThreadExecutor</code>使用。</p>
+<ul>
+<li><strong>特点</strong>：基于链表的无界队列（除非初始化时指定大小）。按照FIFO（先进先出）的原则对任务进行排序。由于它可以是无界的，所以当线程池中的线程数达到corePoolSize后，新任务都会放在队列中，而不会创建新线程直到队列被填满（无界队列永远不会填满，因此不会创建超过corePoolSize的线程）。</li>
+<li><strong>使用场景</strong>：适用于任务量波动较大，但不需要限制任务数量的场景。由于队列无界，可能会堆积大量任务，导致内存溢出。</li>
+<li><strong>注意</strong>：<strong>使用无界队列时，maximumPoolSize参数将无效</strong>，因为队列不会满，所以不会创建超过corePoolSize的线程。</li>
+</ul>
+<h3 id="priorityblockingqueue">PriorityBlockingQueue</h3>
+<ul>
+<li><strong>特点</strong>：一个支持优先级排序的无界队列。任务按照优先级顺序被取出。优先级通过自然顺序或Comparator定义。</li>
+<li><strong>使用场景</strong>：适用于有任务优先级需求的场景。注意，它也是无界的，所以同样有内存溢出的风险。</li>
+<li><strong>注意</strong>：使用此队列时，任务类需要实现Comparable接口，或者在线程池构造时提供Comparator。</li>
+</ul>
+<h3 id="delayqueue">DelayQueue</h3>
+<ul>
+<li><strong>特点</strong>：一个无界队列，用于存放实现了Delayed接口的任务。任务只有在指定的延迟时间到达后才能被取出。队列中的任务按照延迟时间排序，延迟时间到的任务先被取出。</li>
+<li><strong>使用场景</strong>：适用于<strong>定时任务和缓存过期</strong>的场景，如定时调度、缓存对象过期删除等。</li>
+<li><strong>注意</strong>：该队列也是无界的，因此可能存在内存溢出风险。</li>
+</ul>
+<h3 id="synchronousqueue">SynchronousQueue</h3>
+<p><code>newCachedThreadPool</code>使用。</p>
+<ul>
+<li><strong>特点</strong>：这是一个不存储元素的阻塞队列。每个插入操作必须等待另一个线程的对应移除操作，反之亦然。因此，它实际上不维护任务队列，而是直接将任务交给线程执行。</li>
+<li><strong>使用场景</strong>：适用于线程数无限（newCachedThreadPool）或者可以创建很多线程的场景。当使用<code>SynchronousQueue</code>时，如果现有线程无法接收任务（即线程池已达到最大线程数且没有空闲线程），则会尝试创建新的线程执行任务，<strong>如果超过最大线程数则执行拒绝策略</strong>。</li>
+<li><strong>注意</strong>：因为不存储任务，所以通常要求线程池的maximumPoolSize足够大，否则容易执行拒绝策略。</li>
+</ul>
+<h3 id="linkedtransferqueue">LinkedTransferQueue</h3>
+<ul>
+<li><strong>特点</strong>：一个无界队列，基于链表结构。它实现了TransferQueue接口，提供了transfer和tryTransfer方法，可以将任务直接传递给消费者线程（如果有等待的消费者线程，则直接传递，否则放入队列）。</li>
+<li><strong>使用场景</strong>：适用于需要直接传递任务的场景，可以提高性能。</li>
+</ul>
+<h3 id="delayedworkqueue">DelayedWorkQueue</h3>
+<p>专门为 <code>ScheduledThreadPoolExecutor</code> 设计。</p>
+<ul>
+<li><strong>特点</strong>：<code>DelayedWorkQueue</code> 的内部元素按照<strong>延迟的时间长短</strong>对任务进行排序，内部采用的是“堆”的数据结构，可以保证每次出队的任务都是当前队列中执行时间最靠前的。<code>DelayedWorkQueue</code> 添加元素满了之后会自动扩容，即永远不会阻塞，最大扩容可达 <code>Integer.MAX_VALUE</code>。</li>
+<li><strong>使用场景</strong>：在指定延迟后执行任务，例如启动后稍后执行某个操作；以及<strong>周期性地重复执行任务</strong>，例如每隔一段时间执行一次数据同步、日志清理或定时发送通知等。</li>
+</ul>
+<h3 id="linkedblockingdeque">LinkedBlockingDeque</h3>
+<ul>
+<li><strong>特点</strong>：基于链表的双端队列。可以在队列的两端插入和移除任务。因此，它既可以作为FIFO队列使用，也可以作为LIFO队列（栈）使用。</li>
+<li><strong>使用场景</strong>：<strong>适用于工作窃取（work-stealing）算法</strong>，或者需要从队列两端操作任务的场景。</li>
+</ul>
+<h2 id="线程池创建的两种方式">线程池创建的两种方式</h2>
+<h3 id="通过-threadpoolexecutor-构造函数创建">通过 <code>ThreadPoolExecutor</code> 构造函数创建</h3>
+<p>允许开发者明确指定线程池的核心参数，对线程池的运行行为有更精细的控制，从而避免资源耗尽的风险。</p>
+<h3 id="通过-executors-工具类创建不推荐">通过 <code>Executors</code> 工具类创建（不推荐）</h3>
+<p>通过<code>Executors</code>工具类可以创建多种类型的线程池，包括：</p>
+<ul>
+<li><code>FixedThreadPool</code>：<strong>固定线程数量的线程池</strong>。该线程池中的线程数量始终不变。当有一个新的任务提交时，线程池中若有空闲线程，则立即执行。若没有，则新的任务会被暂存在一个任务队列中，待有线程空闲时，便处理在任务队列中的任务。</li>
+<li><code>SingleThreadExecutor</code>： <strong>只有一个线程的线程池</strong>。若多余一个任务被提交到该线程池，任务会被保存在一个任务队列中，待线程空闲，按先入先出的顺序执行队列中的任务。</li>
+<li><code>CachedThreadPool</code>： 可根据实际情况调整线程数量的线程池。<strong>若所有线程均在工作，又有新的任务提交，则会创建新的线程处理任务</strong>。所有线程在当前任务执行完毕后，将返回线程池进行复用。</li>
+<li><code>ScheduledThreadPool</code>：给定的延迟后运行任务或者定期执行任务的线程池。</li>
+</ul>
+<p><strong>生产中建议不要使用<code>Executors</code>工具类创建线程池</strong>：</p>
+<p><code>FixedThreadPool</code> 和 <code>SingleThreadExecutor</code>:使用的是阻塞队列 <code>LinkedBlockingQueue</code>，任务队列最大长度为 <code>Integer.MAX_VALUE</code>，<strong>可能堆积大量的请求，从而导致 OOM</strong>。</p>
+<p><code>CachedThreadPool</code>:使用的是同步队列 <code>SynchronousQueue</code>, 允许创建的线程数量为 <code>Integer.MAX_VALUE</code> ，如果任务数量过多且执行速度较慢，<strong>可能会创建大量的线程，从而导致 OOM。</strong></p>
+<p><code>ScheduledThreadPool</code> 和 <code>SingleThreadScheduledExecutor</code>:使用的无界的延迟阻塞队列<code>DelayedWorkQueue</code>，任务队列最大长度为 <code>Integer.MAX_VALUE</code>,<strong>可能堆积大量的请求，从而导致 OOM。</strong></p>
+<h2 id="executor-关键源码">Executor 关键源码</h2>
+<p>Doug Lea 教授编写Executor时，考虑的情况十分周全，比如各种可能失败的情况都考虑了，导致控制流十分复杂，需要一定的阅读能力。</p>
+<h3 id="executorexecute工作流程">Executor#execute工作流程</h3>
+<p>略微简化的工作流程图，省略了失败情况。</p>
+<figure data-type="image" tabindex="9"><img src="https://kanyewestforreal.github.io//post-images/Executor_Working_Proc.mmd_wm.png" alt="Executor_Working_Proc" loading="lazy"></figure>
+<h3 id="ctl">ctl</h3>
+<p><code>ctl</code> 是 <code>AtomicInteger</code>，高位存放<strong>线程池状态</strong> <code>runState</code>（RUNNING, SHUTDOWN, STOP, TIDYING, TERMINATED），低位存放<strong>当前线程数</strong> <code>workerCount</code>。</p>
+<p>这种压缩可以仅用单次 CAS 实现同步“状态 + 计数”。这是实现轻量级的安全计数与状态检查的关键设计。</p>
+<pre><code class="language-java">//ThreadPoolExecutor
+private final AtomicInteger ctl = new AtomicInteger(ctlOf(RUNNING, 0));
+private static final int COUNT_BITS = Integer.SIZE - 3;
+private static final int COUNT_MASK = (1 &lt;&lt; COUNT_BITS) - 1;
+
+// runState is stored in the high-order bits
+//运行中状态，可以接收新的任务和执行任务队列中的任务
+private static final int RUNNING    = -1 &lt;&lt; COUNT_BITS;
+//shutdown 状态，不再接收新的任务，但是会执行任务队列中的任务
+private static final int SHUTDOWN   =  0 &lt;&lt; COUNT_BITS;
+//停止状态，不再接收新的任务，也不会执行任务队列中的任务，中断所有执行中的任务
+private static final int STOP       =  1 &lt;&lt; COUNT_BITS;
+//整理中状态，所有任务已经终结，工作线程数为 0，过渡到此状态的工作线程接下来会调用钩子方法terminated()
+private static final int TIDYING    =  2 &lt;&lt; COUNT_BITS;
+//终结状态，钩子方法terminated()执行完毕
+private static final int TERMINATED =  3 &lt;&lt; COUNT_BITS;
+
+// Packing and unpacking ctl
+private static int runStateOf(int c)     { return c &amp; ~COUNT_MASK; }
+private static int workerCountOf(int c)  { return c &amp; COUNT_MASK; }
+private static int ctlOf(int rs, int wc) { return rs | wc; }
+</code></pre>
+<h3 id="execute">execute</h3>
+<pre><code class="language-java">//ThreadPoolExecutor#executor
+public void execute(Runnable command) {
+    //fast-fail
+    if (command == null)
+        throw new NullPointerException();
+	
+    //读取 ctl 的当前值（state + workerCount 的组合）。
+    //不是加锁，只是快路径读，降低竞争。
+    int c = ctl.get();
+    if (workerCountOf(c) &lt; corePoolSize) {
+        //如果当前线程数少于 corePoolSize，
+        //优先尝试立刻创建一个新线程，并把 command 作为该线程的 firstTask 去执行
+        //addWorker(..., true) true表示按 corePoolSize 限制
+        //addWorker如果返回 true 说明创建和启动工作线程成功，否则返回 false。
+        if (addWorker(command, true))
+            //线程创建成功，返回
+            return;
+        //没有返回，再读一次ctl
+        //addWorker 失败（并发竞争、状态变更等），重新读取最新状态再走后续分支。
+        c = ctl.get();
+    }
+    //以下if else-if 处理：
+    //当线程数已达 corePoolSize || (当线程数未达 corePoolSize &amp;&amp; 创建线程失败)。
+    
+    //如果池正在运行 &amp;&amp; 尝试把任务放入队列成功。
+    //注意 offer 而非 put，避免调用者线程被阻塞。
+    if (isRunning(c) &amp;&amp; workQueue.offer(command)) {
+        //再读一次 ctl，用于防止竞态
+        int recheck = ctl.get();
+
+        if (! isRunning(recheck) &amp;&amp; remove(command))
+            //如果在 offer 之后线程池已不再 RUNNING（比如正在 shutdown），
+        	//尝试把刚放进去的任务从队列移除它：remove(command) ，如果移除成功返回true
+            //如果失败，说明可能其它线程已经把队列中的任务取走
+            //若移除成功才调用 reject
+            reject(command);
+		
+       	// 处理： 池还在运行 &amp;&amp; 没有线程workerCount==0
+        // 预防 最后一次检查之后所有存活的工作线程已经终结 的情况
+        // 但任务放入了队列，那就尝试创建一个非 core（即按 maximumPoolSize）线程去消费任务队列
+        // addWorker firstTask 为 null，线程会从任务队列阻塞地take()任务。
+        // 确保不会饿死。
+        else if (workerCountOf(recheck) == 0)
+            addWorker(null, false);
+    }
+    //处理： 池不在运行 || 任务放入队列失败
+    //false 尝试创建非core 线程，执行command
+    else if (!addWorker(command, false))
+        //创建非core失败，拒绝
+        reject(command);
+}
+</code></pre>
+<p>优先创建 core 线程 → 将多余任务入队 → 在队列满时扩到 max 线程 → 最终拒绝。这是 <code>ThreadPoolExecutor</code> 的经典三阶策略。</p>
+<h3 id="submit">submit</h3>
+<p>包装返回<code>FutureTask</code>，本质上还是调用了<code>Executor#execute</code>。</p>
+<pre><code class="language-java">//ExecutorService#submit
+public &lt;T&gt; Future&lt;T&gt; submit(Callable&lt;T&gt; task) {
+    if (task == null) throw new NullPointerException();
+    RunnableFuture&lt;T&gt; ftask = newTaskFor(task);
+    execute(ftask);
+    return ftask;
+}
+</code></pre>
+<h3 id="addworker">addWorker</h3>
+<p>核心目标：<strong>原子地（在并发条件下）增加 <code>workerCount</code>、创建 Worker、把 Worker 加入集合并启动对应 Thread</strong>。要做很多检查以保证状态正确性与并发安全。</p>
+<pre><code class="language-java">//ThreadPoolExecutor#addWorker
+private boolean addWorker(Runnable firstTask, boolean core) {
+    //for + retry 标签：允许在状态改变时重新从外层判断做起。
+    retry:
+    //这是个死循环
+    //读 ctl
+    for (int c = ctl.get();;) {
+        // Check if queue empty only if necessary.
+        //fast-fail
+        //如果 runState 已到 SHUTDOWN 及以上（不再是 RUNNING）
+        // &amp;&amp; 满足下面任一：
+		//1.runState 已到 STOP（要强制停止，不能创建新 worker）
+        //2.firstTask != null（有要立即执行的任务，但池处于 SHUTDOWN，这种情况下不接受新任务以避免运行新提交的任务）
+        //3.workQueue.isEmpty()（如果队列为空也不用创建新线程）
+		// 那么返回false 不创建新线程，保证 shutdown 语义
+        if (runStateAtLeast(c, SHUTDOWN)
+            &amp;&amp; (runStateAtLeast(c, STOP)
+                || firstTask != null
+                || workQueue.isEmpty()))
+            return false;
+		
+        //这是个死循环
+        //内循环做两件事：
+		//1.检查是否已经达到允许的线程上限（如果 core==true 用 corePoolSize 限制，否则 maximumPoolSize）。
+        //如果达上限返回 false。这防止超出配置。
+        //（ &amp; COUNT_MASK 是为了取低位 workerCount 有效范围）
+        //2.尝试通过 CAS 把 workerCount 增 1（并且保持 runState 不变）。
+        //CAS成功就跳出重试并继续创建线程。
+		//如果 CAS 失败，重新读 ctl 并检查 runState 是否在此期间变为 SHUTDOWN 等；
+        //若是则 continue retry（回到外层重新检查fast-fail），否则继续内循环尝试。
+        for (;;) {
+            if (workerCountOf(c)
+                &gt;= ((core ? corePoolSize : maximumPoolSize) &amp; COUNT_MASK))
+                return false;
+            if (compareAndIncrementWorkerCount(c))
+                break retry;
+            c = ctl.get();  // Re-read ctl
+            if (runStateAtLeast(c, SHUTDOWN))
+                continue retry;
+        }
+    }
+	
+    //线程/Worker 的构造与注册（非原子，需要锁保护 workers 集合）
+    boolean workerStarted = false;
+    boolean workerAdded = false;
+    Worker w = null;
+    try {
+        //Worker 的构造会创建一个 Thread（通常使用 ThreadFactory.newThread(w)），
+        //并把 firstTask 存进 Worker。
+        //注意 w.thread 可能为 null（ThreadFactory 可能返回 null 或抛异常）。
+        //把 Thread 启动放在锁外，避免死锁与降低锁持有时间。
+        w = new Worker(firstTask);
+        final Thread t = w.thread;
+        if (t != null) {
+            final ReentrantLock mainLock = this.mainLock;
+            mainLock.lock();
+            //在把 w 真正加入 workers 集合前需要持 mainLock，
+            //保证对 workers 的更新与 largestPoolSize 更新等是受保护的（避免竞态）
+            try {
+                //在获取 mainLock 期间 ctl 可能变化，
+                //必须确保当前池状态仍允许把这个 worker 加入（例如在拿锁前池可能被 shutdown）。
+                //这是防止 race 的必要 recheck。
+                int c = ctl.get();
+				
+                //允许把 worker 加入的条件：
+                //池仍在 RUNNING || （池处于 SHUTDOWN 但尚未到 STOP &amp;&amp; firstTask==null（允许用新线程去清空队列中已有的任务））
+                //和 execute 中 addWorker 对应。
+                if (isRunning(c) ||
+                    (runStateLessThan(c, STOP) &amp;&amp; firstTask == null)) {
+                    //确保线程尚未启动
+                    if (t.getState() != Thread.State.NEW)
+                        throw new IllegalThreadStateException();
+                    workers.add(w);
+                    workerAdded = true;
+                    int s = workers.size();
+                    if (s &gt; largestPoolSize)
+                        largestPoolSize = s;
+                }
+            } finally {
+                //释放锁
+                mainLock.unlock();
+            }
+            //t.start() 放在锁外，避免在启动线程时持锁以降低锁持有时间与死锁风险
+            if (workerAdded) {
+                //!!! 在这里启动了线程
+                //线程会执行 w.run() 即 runWorker
+                t.start();
+                workerStarted = true;
+            }
+        }
+    } finally {
+        //如果线程没能成功启动或发生异常，需要回滚：addWorkerFailed 
+        //会把 workerCount 减回去，移除 workers 集合中的 w。
+        //保证 workerCount 与 workers 集合一致性。
+        if (! workerStarted)
+            addWorkerFailed(w);
+    }
+    //成功启动线程则返回 true
+    return workerStarted;
+}
+
+//Worker构造函数
+//Worker继承了AQS
+Worker(Runnable firstTask) {
+    //使用AQS
+    setState(-1); // 上锁，禁止中断interrupt，直到 runWorker
+    this.firstTask = firstTask;
+    this.thread = getThreadFactory().newThread(this);
+}
+</code></pre>
+<h3 id="gettask">getTask</h3>
+<p>Worker 从队列获取下一个任务或决定退出。</p>
+<pre><code class="language-java">private Runnable getTask() {
+    //timedOut：记录上一次 poll 是否超时（用于判断是否需要回收线程）
+    boolean timedOut = false; 
+	//这是个死循环
+    for (;;) {
+        int c = ctl.get();
+
+        //如果池已经 SHUTDOWN 且（ 已经STOP || 队列为空）
+        //应该退出并减少 workerCount（decrementWorkerCount()）
+        //返回 null 表示线程要终止。
+        //目的是遵守 shut down 语义：SHUTDOWN 时清空队列后终止；STOP 立即停止。
+        if (runStateAtLeast(c, SHUTDOWN)
+            &amp;&amp; (runStateAtLeast(c, STOP) || workQueue.isEmpty())) {
+            decrementWorkerCount();
+            return null;
+        }
+
+        int wc = workerCountOf(c);
+
+        //timed 表示当前 worker 是否受“超时回收”策略控制：
+        //如果 allowCoreThreadTimeOut==true（允许 core 线程也超时回收）
+        //或
+        //当前线程数 wc 超过 corePoolSize（即额外线程可以被回收），则 timed=true。
+        boolean timed = allowCoreThreadTimeOut || wc &gt; corePoolSize;
+		
+        //如果 wc &gt; maximumPoolSize（不常见，防御性；有可能因为配置变化导致）
+        // || 
+        ///timed &amp;&amp; timedOut（线程超时过 &amp;&amp; 允许回收）
+        // &amp;&amp; 
+        //wc &gt; 1 （线程数量大于1，那么退出至少还有1个线程） || workQueue.isEmpty()，
+        //则尝试使用 CAS 把 workerCount 减 1。
+        //CAS成功则返回 null（结束当前线程）。如果 CAS 失败则 continue 重试
+        if ((wc &gt; maximumPoolSize || (timed &amp;&amp; timedOut))
+            &amp;&amp; (wc &gt; 1 || workQueue.isEmpty())) {
+            if (compareAndDecrementWorkerCount(c))
+                return null;
+            continue;
+        }
+		
+        //如果不满足退出条件，则从队列获取任务：
+		//如果 timed（允许超时回收）则用 poll(timeout)：会在超时后返回 null，下次循环触发上面的超时逻辑；
+		//否则使用 take()（阻塞直到有任务）
+        try {
+            Runnable r = timed ?
+                workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS) :
+                workQueue.take();
+            //如果取到 r != null 就返回任务，供 runWorker 执行
+            if (r != null)
+                return r;
+            timedOut = true;
+        } catch (InterruptedException retry) {
+            //如果线程在 poll/take 中被中断，则把 timedOut=false 并继续循环
+            //（中断通常说明需要重新检查状态，例如 池变为shutdown）
+            //把超时标志清零是防止误把中断当成超时导致退出。
+            timedOut = false;
+        }
+    }
+}
+</code></pre>
+<h3 id="runworker">runWorker</h3>
+<p>Worker 的主循环执行体，线程池线程一直持续运行该方法。</p>
+<pre><code class="language-java">
+//ThreadPoolExecutor#runWorker
+final void runWorker(Worker w) {
+    // 注意：调用runWorker的都是线程池里的线程了
+    Thread wt = Thread.currentThread();
+    //获取 firstTask，并置空。
+    //firstTask 仅供 Worker 启动时一次性使用（避免重复执行）
+    Runnable task = w.firstTask;
+    w.firstTask = null;
+    //见上，Woker构造时通过AQS上锁，现在解锁
+    w.unlock();
+    //标志位：是否因为异常或线程意外终止而退出循环。
+    //初始化为 true，正常循环结束会把它设为 false
+    boolean completedAbruptly = true;
+    try {
+        //执行 firstTask（若有），然后
+        //无限循环! 从队列 getTask() 获取新任务，
+        //直到 getTask() 返回 null（表示池要关闭且该线程应退出）
+        while (task != null || (task = getTask()) != null) {
+            //再次上锁
+            w.lock();
+            //如果 池已到 STOP 或更高 || 
+            //当前线程已经被 interrupt() &amp;&amp; runState 已到 STOP （再次检查） &amp;&amp; 并且当前线程没有设置中断标志
+            if ((runStateAtLeast(ctl.get(), STOP) ||
+                 (Thread.interrupted() &amp;&amp;
+                  runStateAtLeast(ctl.get(), STOP))) &amp;&amp;
+                !wt.isInterrupted()){
+                //确保当池进入 STOP 时，线程会被设置为中断状态；
+            	//在某些情况下可能已被别处清除了中断标志（上面interrupted()就清除了一次）
+                //所以需要恢复wt中断状态标识
+                wt.interrupt();
+            }
+            try {
+                //hook 可以在任务执行前做日志/计时/上下文设置等。
+                beforeExecute(wt, task);
+                try {
+                    task.run();
+                    //任务执行后的钩子，允许记录异常、清理上下文等。
+                    afterExecute(task, null);
+                } catch (Throwable ex) {
+                    afterExecute(task, ex);
+                    //这里重抛异常以保留外层逻辑对异常的处理
+                    throw ex;
+                }
+            } finally {
+                task = null;
+                w.completedTasks++;
+                w.unlock();
+            }
+        }
+        //走到这算没有出现异常，否则会因为上面的throw 执行下面的finally
+        completedAbruptly = false;
+    } finally {
+        //getTask() 返回 null 表示 Worker要退出了
+        //可能是正常结束，或者因异常中断。
+        //completedAbruptly 表示该线程是否是“异常中断/非正常退出”
+        //这个标志影响是否需要先调整 workerCount。
+        processWorkerExit(w, completedAbruptly);
+    }
+}
+
+private void processWorkerExit(Worker w, boolean completedAbruptly) {
+        if (completedAbruptly) // If abrupt, then workerCount wasn't adjusted
+            decrementWorkerCount();
+
+        final ReentrantLock mainLock = this.mainLock;
+        mainLock.lock();
+        try {
+            //移除worker
+            completedTaskCount += w.completedTasks;
+            workers.remove(w);
+        } finally {
+            mainLock.unlock();
+        }
+		
+        tryTerminate();
+
+        int c = ctl.get();
+        if (runStateLessThan(c, STOP)) {
+            if (!completedAbruptly) {
+                //计算在当前配置下“应该保留的最小线程数（min）”。
+				//如果允许 core 线程超时回收（allowCoreThreadTimeOut == true）
+                //则 min = 0（核心线程也可以被回收）。
+				//否则要保留 corePoolSize 个线程。
+                int min = allowCoreThreadTimeOut ? 0 : corePoolSize;
+                //当 min == 0（即允许 core 超时回收），但队列 非空 时，把 min 提升到 1
+                //防止饿死
+                if (min == 0 &amp;&amp; ! workQueue.isEmpty())
+                    min = 1;
+                //当前（快照）workerCount 已经 &gt;= 上面计算的 min，说明不需要补线程，直接返回
+                if (workerCountOf(c) &gt;= min)
+                    return;
+            }
+            //是异常退出 || 当 workerCountOf(c) &lt; min 时
+            //补充线程
+            addWorker(null, false);
+        }
+    }
+</code></pre>
+<h3 id="shutdown">shutdown</h3>
+<p>平滑关闭：不再接受新任务 -&gt; 清理空闲线程 -&gt; 完成队列中任务</p>
+<pre><code class="language-java">//ThreadPoolExecutor#shutdown
+public void shutdown() {
+    final ReentrantLock mainLock = this.mainLock;
+    //修改线程池的状态需要加锁，保护对 workers 集合与状态的一致修改。
+    mainLock.lock();
+    try {
+        checkShutdownAccess();
+        //把 runState 推到 SHUTDOWN（但不立即中断正在运行的线程）
+        advanceRunState(SHUTDOWN);
+        //中断那些空闲的worker，使它们从 take() 中返回或响应中断，从而加速 shutdown。
+        //如果某些线程正在执行任务，则不会马上被中断
+        //（在 SHUTDOWN 时通常不会 interrupt 正在运行的任务，这与 STOP 不同）。
+        interruptIdleWorkers();
+        onShutdown(); // hook for ScheduledThreadPoolExecutor
+    } finally {
+        mainLock.unlock();
+    }
+    //检查是否满足终止条件（workers 都退出且队列为空等）
+    //如果满足则推进到 TIDYING/TERMINATED 并通知等待的线程/回调。
+    tryTerminate();
+}
+</code></pre>
+<h2 id="比较">比较</h2>
+<h3 id="scheduledthreadpoolexecutor-vs-timer">ScheduledThreadPoolExecutor vs Timer</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">特性/维度</th>
+<th style="text-align:left"><code>Timer</code></th>
+<th style="text-align:left"><code>ScheduledThreadPoolExecutor</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left"><strong>底层架构</strong></td>
+<td style="text-align:left">单线程</td>
+<td style="text-align:left"><strong>线程池</strong>（可配置核心线程数）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>任务执行</strong></td>
+<td style="text-align:left">顺序执行，相互阻塞</td>
+<td style="text-align:left"><strong>并发执行</strong>，互不干扰（默认）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>异常处理</strong></td>
+<td style="text-align:left"><strong>一个任务抛出未捕获异常，整个 Timer 线程终止</strong>，导致其他任务无法执行。</td>
+<td style="text-align:left">某个任务的异常不会影响线程池中其他线程，其他任务照常执行。</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>时间基准</strong></td>
+<td style="text-align:left">基于<strong>绝对时间</strong>（<code>Date</code>），对系统时钟敏感。</td>
+<td style="text-align:left">基于<strong>相对时间</strong>，对系统时钟变化不敏感。</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>灵活性</strong></td>
+<td style="text-align:left">低，只能执行 <code>TimerTask</code>。</td>
+<td style="text-align:left">高，可以执行 <code>Runnable</code>、<code>Callable</code>，功能更丰富（如获取 Future）。</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>精确性</strong></td>
+<td style="text-align:left">依赖于前一个任务的执行时间，如果前一个任务耗时，后续任务会延迟。</td>
+<td style="text-align:left">更精确，因为多个线程可以同时执行，减少了任务间的相互影响。</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>资源管理</strong></td>
+<td style="text-align:left">差，无法复用线程，创建和销毁开销大。</td>
+<td style="text-align:left"><strong>优秀</strong>，利用线程池，有效管理资源。</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>JDK 版本</strong></td>
+<td style="text-align:left">从 JDK 1.3 开始</td>
+<td style="text-align:left">从 JDK 1.5 开始（作为 <code>java.util.concurrent</code> 的一部分）</td>
+</tr>
+<tr>
+<td style="text-align:left"><strong>推荐度</strong></td>
+<td style="text-align:left"><strong>不推荐使用</strong></td>
+<td style="text-align:left"><strong>推荐</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="runnable-vs-callablefuture">Runnable vs Callable+Future</h3>
+<p><code>Runnable</code> 接口不会返回结果或抛出检查异常，但是使用 <code>Callable</code> 接口可以返回结果和抛出异常。所以，如果任务不需要返回结果或抛出异常，可以使用 <code>Runnable</code> 接口，这样代码看起来会更加简洁。</p>
+<h3 id="execute-vs-submit">execute() vs submit()</h3>
+<p><code>execute()</code> 和 <code>submit()</code>是两种提交任务到线程池的方法，有一些区别：</p>
+<p><strong>返回值</strong>：</p>
+<p><code>execute()</code> 方法用于提交不需要返回值的任务。无法判断任务是否被线程池成功执行。可以提交 <code>Runnable</code>任务。</p>
+<p><code>submit()</code> 方法用于提交需要返回值的任务。可以提交 <code>Runnable</code> 或 <code>Callable</code> 任务。</p>
+<p><code>submit()</code> 方法返回一个 <code>Future</code> 对象，通过这个 <code>Future</code> 对象可以判断任务是否执行成功，并使用get方法获取任务的返回值（<code>get()</code>方法会阻塞当前线程直到任务完成， <code>get(long timeout，TimeUnit unit)</code>多了一个超时时间，如果在 <code>timeout</code> 时间内任务还没有执行完，就会抛出 <code>java.util.concurrent.TimeoutException</code>）。</p>
+<p><strong>异常处理</strong>：</p>
+<p>在使用 <code>submit()</code> 方法时，可以通过 <code>Future</code> 对象处理任务执行过程中抛出的异常；</p>
+<p><strong>请注意</strong>，在使用 <code>execute()</code> 方法时，<strong>异常处理需要通过自定义的 <code>ThreadFactory</code></strong> （在线程工厂创建线程的时候设置<code>UncaughtExceptionHandler</code>对象来 处理异常）或 <code>ThreadPoolExecutor</code> 的 <code>afterExecute()</code> 方法来处理。</p>
+<h3 id="shutdown-vs-shutdownnow">shutdown()  vs shutdownNow()</h3>
+<ul>
+<li><strong><code>shutdown（）</code></strong> :关闭线程池，线程池的状态变为 <code>SHUTDOWN</code>。线程池不再接受新任务了，但是队列里的任务得执行完毕。</li>
+<li><strong><code>shutdownNow（）</code></strong> :关闭线程池，线程池的状态变为 <code>STOP</code>。线程池会终止当前正在运行的任务，并停止处理排队的任务并返回正在等待执行的 List。</li>
+</ul>
+<h3 id="isterminated-vs-isshutdown">isTerminated()  vs isShutdown()</h3>
+<ul>
+<li><strong><code>isShutDown</code></strong> 当调用 <code>shutdown()</code> 方法后返回为 true。</li>
+<li><strong><code>isTerminated</code></strong> 当调用 <code>shutdown()</code> 方法后，并且所有提交的任务完成后返回为 true</li>
+</ul>
+<h2 id="实践建议">实践建议</h2>
+<h3 id="线程池数量">线程池数量</h3>
+<p>如果我们设置的线程池数量太小的话，如果同一时间有大量任务/请求需要处理，可能会导致大量的请求/任务在任务队列中排队等待执行，甚至会出现任务队列满了之后任务/请求无法处理的情况，或者大量任务堆积在任务队列导致 OOM。这样很明显是有问题的，CPU 根本没有得到充分利用。</p>
+<p>如果我们设置线程数量太大，大量线程可能会同时在争取 CPU 资源，这样会导致大量的上下文切换，从而增加线程的执行时间，影响了整体执行效率。</p>
+<h3 id="不同类别的业务用不同的线程池">不同类别的业务用不同的线程池</h3>
+<p>不同类别的业务，可能线程耗时不一样。</p>
+<p>所以配置时的核心线程数量、最大线程数量不一样。</p>
+<p>以及不同业务对拒绝策略的容忍度不同。</p>
+<p>只有合适的配置，才能发挥线程池应该起到的作用。</p>
+<p>Demo：</p>
+<pre><code class="language-java">ExecutorService pool = Executors.newFixedThreadPool(5); // 只有 5 个线程
+
+//父任务
+for(int i = 0;i&lt;5;i++){
+    pool.submit(() -&gt; {
+        System.out.println(&quot;parent start&quot;);
+        Future&lt;?&gt; f = pool.submit(() -&gt; {
+            //子任务
+            System.out.println(&quot;child running&quot;);
+        });
+        try {
+            //等待 child 完成
+            //但如果 pool 的所有线程已被 parent 占用，那么 child 无法执行，永远阻塞！
+            // parent 依赖 child 完成，才能结束，但是child无法开始！
+            f.get(); 
+        } catch (Exception e) { e.printStackTrace(); }
+        System.out.println(&quot;parent end&quot;);
+    });
+}
+</code></pre>
+<h3 id="线程池命名">线程池命名</h3>
+<p>线程池虽然不支持直接命名。但是创建线程池时，可以传入自定义的线程工厂，来给线程池内所有线程命名标记。</p>
+<h3 id="关闭线程池务必记得关闭">关闭线程池务必记得关闭</h3>
+<h3 id="负责耗时任务的线程池需要重点配置">负责耗时任务的线程池，需要重点配置</h3>
+<p>不应该将耗时任务与快速任务混在同一个核心线程池中执行。</p>
+<p>一般配置选用 小核心线程数量、有界队列。</p>
+<h3 id="线程池和threadlocal公用导致的数据污染">线程池和ThreadLocal公用导致的数据污染</h3>
+<p>详细见下。</p>
+<h1 id="threadlocal-2">ThreadLocal</h1>
+<p><code>ThreadLocal</code>给每个线程提供“独立的变量副本”，即 变量 在不同线程里可以有不同的值而互不干扰。每个线程只能访问自己的副本。</p>
+<p>**每个 <code>Thread</code> 有一个 <code>ThreadLocalMap</code>，由 <code>ThreadLocal</code> 对象作为 key（弱引用）来索引对应的 变量。**线程（Thread）持有实际的 map（<code>threadLocals</code>），而不是 <code>ThreadLocal</code> 持有全部线程的数据。<code>ThreadLocal</code> 只是作为 key，用来访问当前线程的map。</p>
+<h2 id="调用流程">调用流程</h2>
+<pre><code class="language-java">Thread Scope{
+    → ThreadLocal.get()
+        → ThreadLocalMap map = getMap(Thread)
+        → map.getEntry(ThreadLocal)
+            → searching Map for Entry
+        	→ return Entry(WeakReference&lt;ThreadLocal&gt;, value)
+        return Entry.value
+}
+</code></pre>
+<p><strong>弱引用（WeakReference）作为 key 的影响</strong>：</p>
+<p>当应用不再持有 <code>ThreadLocal</code> 对象时，Key 可以被 GC 回收。</p>
+<p>但是回收后 map 中会留下 <code>Entry</code>（key==null）这个条目对象。由于 value 是强引用，<strong>如果不清理，value 会一直被Entry（线程）所持有，导致内存泄漏</strong>（尤其当 <code>Thread</code> 是长存活线程如线程池线程时）。</p>
+<p>因此，GC发起后，如果<code>WeakReference&lt;ThreadLocal&gt; key</code>被回收，但是value被<code>Entry</code>强引用，value不会被回收。</p>
+<p>所以需要<code>ThreadLocalMap</code> 在<code>get/set/remove</code>、扩容、或遇到 stale entry 时，运行 <code>expungeStaleEntry</code> 清理并压缩表。</p>
+<h2 id="threadlocal关键实现">ThreadLocal关键实现</h2>
+<h3 id="核心数据结构">核心数据结构</h3>
+<pre><code class="language-java">private final int threadLocalHashCode = nextHashCode();
+
+private static final int HASH_INCREMENT = 0x61c88647;
+private static AtomicInteger nextHashCode = new AtomicInteger();
+private static int nextHashCode() {
+    return nextHashCode.getAndAdd(HASH_INCREMENT);
+}
+</code></pre>
+<p><code>ThreadLocal</code>使用斐波那契散列（0x61c88647是2^32 * (√5-1)/2的十六进制近似）。</p>
+<p>每当创建一个<code>ThreadLocal</code>对象，这个<code>ThreadLocal.nextHashCode</code> 这个值就会增长 <code>0x61c88647</code> 。</p>
+<p>因此<code>ThreadLocal</code>作为<code>ThreadLocalMap Entry</code>的Key时，在Map的 2^k 容量下能够均匀分布，减少哈希冲突。</p>
+<p>为什么<code>index</code>不是简单自增+1？：自增+1可能会导致连续 key 冲突，很不均衡；乘增（固定非1步长）可以把线性序号映射成较均匀的索引。</p>
+<h3 id="get">get</h3>
+<p>快路径：取当前线程 <code>map = getMap(t);</code><br>
+如果 <code>map != null</code>，调用 <code>map.getEntry(this)</code> 尝试直接通过 hash 位置查找，即fast path：尝试直接索引命中：</p>
+<ul>
+<li>命中则返回 <code>e.value</code>（带类型转换）。</li>
+<li>未命中走 <code>getEntryAfterMiss(...)</code>，沿Map线性查找：遇到 stale entry 会触发 <code>expungeStaleEntry(i)</code> 清理。</li>
+</ul>
+<p>若没找到会调用 <code>setInitialValue()</code>，内部会调用 <code>initialValue()</code>（用户可重写或用 <code>withInitial</code> 提供 <code>Supplier</code>）。</p>
+<pre><code class="language-java">ThreadLocalMap getMap(Thread t) {
+	return t.threadLocals;
+}
+
+//自增1，用于搜索，len是防止越界
+private static int nextIndex(int i, int len) {
+    return ((i + 1 &lt; len) ? i + 1 : 0);
+}
+
+
+private static int prevIndex(int i, int len) {
+    return ((i - 1 &gt;= 0) ? i - 1 : len - 1);
+}
+
+public T get() {
+    Thread t = Thread.currentThread();
+    // 获取当前线程的ThreadLocalMap
+    ThreadLocalMap map = getMap(t); 
+    if (map != null) {
+        //传入this（ThreadLocal）作为Key，获取Entry
+        ThreadLocalMap.Entry e = map.getEntry(this);
+        if (e != null) {
+            return (T)e.value;
+        }
+    }
+    return setInitialValue();
+}
+
+private Entry getEntry(ThreadLocal&lt;?&gt; key) {
+    //计算理论上hash
+    int i = key.threadLocalHashCode &amp; (table.length - 1);
+    Entry e = table[i];
+    // Android-changed: Use refersTo().
+    // 是否命中
+    if (e != null &amp;&amp; e.refersTo(key))
+        return e;
+    else
+        return getEntryAfterMiss(key, i, e);
+}
+
+//未命中
+private Entry getEntryAfterMiss(ThreadLocal&lt;?&gt; key, int i, Entry e) {
+    Entry[] tab = table;
+    int len = tab.length;
+	//线性遍历
+    while (e != null) {
+        // Android-changed: Use refersTo() (twice).
+        //命中
+        if (e.refersTo(key))
+            return e;
+        //找到过期、陈旧的Entry（ThreadLocal Key已经被GC）
+        if (e.refersTo(null))
+            //清理
+            expungeStaleEntry(i);
+        else
+            //没命中、没找到stale entry，i+1，线性遍历
+            i = nextIndex(i, len);
+        e = tab[i];
+    }
+    //线性遍历完还是没找到，说明：1.没有，需要set 2.Map没有初始化
+    return null;
+}
+
+private T setInitialValue() {
+    // 使用ThreadLcoal 有两种使用方法
+    // 1.静态方法withInital(S s) 返回ThreadLocal&lt;S&gt;
+    // 2.实现模板方法initialValue 返回初始Value
+    T value = initialValue(); 
+    Thread t = Thread.currentThread();
+    ThreadLocalMap map = getMap(t);
+    if (map != null) {
+        map.set(this, value);
+    } else {
+        createMap(t, value); //懒加载
+    }
+    return value;
+}
+
+void createMap(Thread t, T firstValue) {
+    t.threadLocals = new ThreadLocalMap(this, firstValue);
+}
+</code></pre>
+<h3 id="initialvalue">initialValue</h3>
+<p><code>initialValue()</code>：默认返回 <code>null</code>；常见用法是匿名子类重写该方法，或使用 <code>withInitial</code>。</p>
+<p><code>withInitial(Supplier)</code>：从 Java 8 引入的便捷工厂，返回一个 <code>SuppliedThreadLocal</code>，其 <code>initialValue()</code> 由 supplier 提供。</p>
+<pre><code class="language-java">protected T initialValue() {
+    return null;
+}
+
+public static &lt;S&gt; ThreadLocal&lt;S&gt; withInitial(Supplier&lt;? extends S&gt; supplier) {
+    return new SuppliedThreadLocal&lt;&gt;(supplier);
+}
+
+static final class SuppliedThreadLocal&lt;T&gt; extends ThreadLocal&lt;T&gt; {
+
+    private final Supplier&lt;? extends T&gt; supplier;
+
+    SuppliedThreadLocal(Supplier&lt;? extends T&gt; supplier) {
+        this.supplier = Objects.requireNonNull(supplier);
+    }
+
+    @Override
+    protected T initialValue() {
+        return supplier.get();
+    }
+}
+</code></pre>
+<h3 id="set">set</h3>
+<p>与<code>get</code>类似，</p>
+<p>若 <code>map</code> 存在则 <code>map.set(this, value)</code>，以<code>ThreadLocal as Key</code>，存入map中。</p>
+<p>若map不存在则 <code>createMap(t, value)</code>，构造新的 <code>ThreadLocalMap(this, value)</code>到<code>Thread#threadLocals</code>上，并放入以该<code>value</code>作为第一个<code>entry</code>。</p>
+<p><code>set</code> 不做同步，因为只会被当前线程访问其 <code>Thread</code> 的 map。</p>
+<p><code>set</code> 方法在插入过程中当遇到 stale entry，会调用 <code>replaceStaleEntry(...)</code> 来替换并清理 stale entries，最后可能触发 <code>rehash()</code>。</p>
+<pre><code class="language-java">public void set(T value) {
+    Thread t = Thread.currentThread();
+    ThreadLocalMap map = getMap(t);
+    if (map != null) {
+        map.set(this, value);
+    } else {
+        createMap(t, value);
+    }
+}
+</code></pre>
+<h3 id="remove">remove</h3>
+<p>调用 <code>m.remove(ThreadLocal)</code>，从 map 中删除对应 entry。</p>
+<p>内部找到 entry 后 <code>e.clear()</code>（清掉弱引用），<code>e.value = null</code>（释放value强引用），</p>
+<p>并 <code>expungeStaleEntry(i)</code> 做后续整理。</p>
+<pre><code class="language-java"> public void remove() {
+     ThreadLocalMap m = getMap(Thread.currentThread());
+     if (m != null) {
+         m.remove(this);
+     }
+ }
+</code></pre>
+<h2 id="threadlocalmap关键实现">ThreadLocalMap关键实现</h2>
+<h3 id="核心数据结构-2">核心数据结构</h3>
+<p><code>ThreadLocalMap</code>作为<code>ThreadLocal</code>的内部类，<code>ThreadLocal.ThreadLocalMap</code> 使用数组 + 线性探测实现（不是标准 <code>HashMap</code> 的链表/红黑树）。</p>
+<p>每个 entry 的 key 是对 <code>ThreadLocal</code> 的 <strong>弱引用</strong>，value 是强引用。</p>
+<pre><code class="language-java">static class Entry extends WeakReference&lt;ThreadLocal&lt;?&gt;&gt; {
+    Object value;
+    Entry(ThreadLocal&lt;?&gt; k, Object v) { super(k); value = v; }
+}
+</code></pre>
+<p><code>ThreadLocalMap</code>初始化。</p>
+<p><strong>初始容量<code>INITIAL_CAPACITY = 16 = 2^4</code></strong>。</p>
+<p>i作为索引，由<code>threadLocalHashCode</code> 与 <code>INITIAL_CAPACITY</code> 确定。</p>
+<p><strong>负荷因子，初始化为<code>threshold = 2/3 * INITIAL_CAPACITY</code></strong>。</p>
+<pre><code class="language-java">ThreadLocalMap(ThreadLocal&lt;?&gt; firstKey, Object firstValue) {
+    table = new Entry[INITIAL_CAPACITY];
+    int i = firstKey.threadLocalHashCode &amp; (INITIAL_CAPACITY - 1);
+    table[i] = new Entry(firstKey, firstValue);
+    size = 1;
+    setThreshold(INITIAL_CAPACITY);
+}
+</code></pre>
+<h3 id="getentry">getEntry</h3>
+<p>见<code>ThreadLocal关键实现#get</code>。</p>
+<h3 id="set-2">set</h3>
+<p>在插入时会遇到 stale entry（key==null）时清理并复用槽，必要时触发 table 扩容。</p>
+<pre><code class="language-java">private void set(ThreadLocal&lt;?&gt; key, Object value) {
+    Entry[] tab = table;
+    int len = tab.length;
+    //计算起始槽：当前Key应该在Map中的位置
+    int i = key.threadLocalHashCode &amp; (len-1);
+    
+    // 线性探测寻找合适位置
+    for (Entry e = tab[i]; e != null; e = tab[i = nextIndex(i, len)]) {
+        ThreadLocal&lt;?&gt; k = e.get();
+        
+        if (k == key) {  
+            // 情况1：找到相同key，直接更新
+            e.value = value;
+            return;
+        }
+        
+        if (k == null) {  
+            // 情况2：发现过期条目，其Key已经被GC，那么需要替换并清理，然后插入。
+            replaceStaleEntry(key, value, i);
+            return;
+        }
+    }
+    
+    // 情况3：找到空槽，创建新条目
+    tab[i] = new Entry(key, value);
+    int sz = ++size;
+    
+    // 插入新Entry后调用 cleanSomeSlots(i, sz) 做启发式扫描清理 stale entry
+    // 返回 false 表示没有发现、删除stale entry &amp;&amp; sz达到负载阈值，那么尝试rehash
+    if (!cleanSomeSlots(i, sz) &amp;&amp; sz &gt;= threshold)
+        rehash();
+}
+</code></pre>
+<h3 id="replacestaleentry">replaceStaleEntry</h3>
+<p>发现过期条目，其Key已经被GC，那么需要替换并清理，然后插入。</p>
+<p>但不能简单覆盖而不做更多工作，因为此 stale 可能在一个簇(run)的中间，直接覆盖可能破坏 probing 的正确性，导致后续 item 无法被找到。</p>
+<blockquote>
+<p>簇（run / cluster）：簇是指哈希表中 <strong>从某个起始位置开始，连续的一段非 null 条目</strong>，直到遇到第一个 <code>null</code> 为止。</p>
+</blockquote>
+<pre><code class="language-java">private void replaceStaleEntry(ThreadLocal&lt;?&gt; key, Object value,
+                               int staleSlot) {
+    Entry[] tab = table;
+    int len = tab.length;
+    Entry e;
+	
+    //Key被GC的Entry的索引，从其开始
+    int slotToExpunge = staleSlot;
+    //向前查找，从Key为null的Entry开始
+    //如果向前找到了过期数据，更新下标为 i，即slotToExpunge=i
+    //直到Entry为null
+    for (int i = prevIndex(staleSlot, len);
+         (e = tab[i]) != null;
+         i = prevIndex(i, len))
+        // Android-changed: Use refersTo().
+        if (e.refersTo(null))
+            slotToExpunge = i;
+
+    //向后查找，从Key为null的Entry开始
+    //如果遇到 e.refersTo(key)，等于想要插入的Entry的key 
+    //就把它的 value 设为新的 value
+    for (int i = nextIndex(staleSlot, len);
+         (e = tab[i]) != null;
+         i = nextIndex(i, len)) {
+
+        if (e.refersTo(key)) {
+            e.value = value;
+			
+            tab[i] = tab[staleSlot];
+            tab[staleSlot] = e;
+
+            // 如果slotToExpunge == staleSlot
+            // 这说明一开始向前查找时，并未找到Stale Entry，
+            // 接着向后查找过程中，直到找到同Key时也未发现Stale Entry
+            if (slotToExpunge == staleSlot)
+                //那么从这个同Key的Entry开始 做启发式扫描
+                slotToExpunge = i;
+            
+            // 从slotToExpunge开始
+            // 三种：
+            // 1.要么是向前扫描到的Satle Entry位置 
+            // 2.要么是向后扫描到的Satle Entry位置
+            // 3.同Key的Entry的位置
+            // 往后做启发式扫描 + 清理
+            // 这个方法不负责清理，只负责扫描
+            cleanSomeSlots(expungeStaleEntry(slotToExpunge), len);
+            return;
+        }
+
+
+        // Android-changed: Use refersTo().
+        // 不等于想要插入的Entry的Key 
+        // e.refersTo(null)说明是一个 Stale Entry &amp;&amp;
+        // 同时slotToExpunge == staleSlot说明，一开始向前查找时，并未找到Stale Entry
+        // 则更新slotToExpunge为当前位置，这个前提是向前扫描时未发现过期数据
+        if (e.refersTo(null) &amp;&amp; slotToExpunge == staleSlot)
+            slotToExpunge = i;
+    }
+
+    // 如果向后找不到同Key的，那么直接在Key为null的Entry上更新
+    tab[staleSlot].value = null;
+    tab[staleSlot] = new Entry(key, value);
+
+    // 如果；除了staleSlot以外，还发现了Key为null的 Stale Entry
+    // 就要开启清理数据的逻辑：
+    if (slotToExpunge != staleSlot)
+        cleanSomeSlots(expungeStaleEntry(slotToExpunge), len);
+}
+</code></pre>
+<h3 id="cleansomeslots">cleanSomeSlots</h3>
+<pre><code class="language-java">//启发式扫描清理
+private boolean cleanSomeSlots(int i, int n) {
+    boolean removed = false;
+    Entry[] tab = table;
+    int len = tab.length;
+    //做对数级探测以寻找 stale entry
+    //如果找到 stale 则设置 n = len 以此做更多探测，并 expungeStaleEntry(i)
+    // n &gt;&gt;&gt;= 1 位运算，每次右移动 1 位
+    // 无论如何都做一次探测
+    do {
+        //从新插入Entry的槽位的下一个，开始启发式扫描
+        i = nextIndex(i, len);
+        Entry e = tab[i];
+        // Android-changed: Use refersTo().
+        // 探测到下一个是过期的
+        // n = 当前Map长度 （len是基础类型，不会随着清理而变小）
+        // 然后就有多 log2(len) 次探测机会（下次探测位置是i+1）
+        // 否则没探测到，n &gt;&gt;&gt;= 1 结果为0，结束探测。
+        if (e != null &amp;&amp; e.refersTo(null)) {
+            n = len;
+            removed = true;
+            i = expungeStaleEntry(i);
+        }
+    } while ( (n &gt;&gt;&gt;= 1) != 0);
+    //返回 false 表示没有发现、删除stale entry
+    // true表示至少删除了一个
+    return removed;
+}
+</code></pre>
+<h3 id="expungestaleentry">expungeStaleEntry</h3>
+<pre><code class="language-java">//tab[staleSlot] 对应的 entry 的 key 已经为 null
+//清理该slot
+private int expungeStaleEntry(int staleSlot) {
+    Entry[] tab = table;
+    int len = tab.length;
+
+    // 释放value强引用
+    tab[staleSlot].value = null;
+    tab[staleSlot] = null;
+    size--;
+
+    // 从 i = nextIndex(staleSlot, len) 开始向后遍历
+    // 直到遇到 null，说明run结束
+    Entry e;
+    int i;
+    for (i = nextIndex(staleSlot, len);
+         (e = tab[i]) != null;
+         i = nextIndex(i, len)) {
+        ThreadLocal&lt;?&gt; k = e.get();
+        //这个Entry 的 key被GC了，清理
+        if (k == null) {
+            e.value = null;
+            tab[i] = null;
+            size--;
+        } else {
+            //Entry key 仍然存在，没有被GC
+            //计算key理论上在Map（tab）中的索引
+            int h = k.threadLocalHashCode &amp; (len - 1);
+            //如果计算出来的h索引 和 当前遍历到的i索引 不一致
+            //那么需要尝试rehash 保证查找效率
+            if (h != i) {
+                tab[i] = null;
+                //如果Entry Key理论上的索引h上已经有了数据
+                //在tab中找到一个距离h最近的空slot （其Entry==null）
+                while (tab[h] != null)
+                    h = nextIndex(h, len);
+                //放入Entry
+                tab[h] = e;
+            }
+        }
+    }
+    return i;
+}
+</code></pre>
+<h3 id="rehash">rehash</h3>
+<pre><code class="language-java">private void rehash() {
+    expungeStaleEntries();
+
+    // 使用较低的倍增阈值以避免滞后
+    // 如果全局清理过后发现，size 仍然大于 threshold * 3/4
+    // 扩容
+    if (size &gt;= threshold - threshold / 4)
+        resize();
+}
+
+//全局清理
+private void expungeStaleEntries() {
+    Entry[] tab = table;
+    int len = tab.length;
+    for (int j = 0; j &lt; len; j++) {
+        Entry e = tab[j];
+        // Android-changed: Use refersTo().
+        if (e != null &amp;&amp; e.refersTo(null))
+            expungeStaleEntry(j);
+    }
+}
+</code></pre>
+<h3 id="resize">resize</h3>
+<pre><code class="language-java">private void resize() {
+    Entry[] oldTab = table;
+    int oldLen = oldTab.length;
+    // 新容量是旧的两倍
+    int newLen = oldLen * 2;
+    Entry[] newTab = new Entry[newLen];
+    int count = 0;
+
+    for (Entry e : oldTab) {
+        if (e != null) {
+            ThreadLocal&lt;?&gt; k = e.get();
+            if (k == null) {
+                e.value = null; // Help the GC
+            } else {
+                //Entry key 仍然存在，没有被GC
+                //计算key理论上在Map（tab）中的索引
+                int h = k.threadLocalHashCode &amp; (len - 1);
+				//如果Entry Key理论上的索引h上已经有了数据
+                //在tab中找到一个距离h最近的空slot （其Entry==null）
+                while (newTab[h] != null)
+                    h = nextIndex(h, newLen);
+                newTab[h] = e;
+                count++;
+            }
+        }
+    }
+
+    setThreshold(newLen);
+    size = count;
+    table = newTab;
+}
+</code></pre>
+<h3 id="remove-2">remove</h3>
+<pre><code class="language-java">private void remove(ThreadLocal&lt;?&gt; key) {
+    Entry[] tab = table;
+    int len = tab.length;
+    int i = key.threadLocalHashCode &amp; (len-1);
+    for (Entry e = tab[i];
+         e != null;
+         e = tab[i = nextIndex(i, len)]) {
+        // Android-changed: Use refersTo().
+        if (e.refersTo(key)) {
+            e.clear();
+            expungeStaleEntry(i);
+            return;
+        }
+    }
+}
+</code></pre>
+<h2 id="inheritablethreadlocal关键实现">InheritableThreadLocal关键实现</h2>
+<p>使用<code>ThreadLocal</code>的时候，正常情况下子线程无法取得父线程中创建的<code>ThreadLocal</code>。</p>
+<p>而使用<code>InheritableThreadLocal</code>，可以实现子线程继承父线程的局部变量。</p>
+<p>继承行为并非自动发生，它只在一种特定情况下触发：<strong>在父线程中通过 <code>new Thread()</code> 创建子线程对象时，自动在 <code>Thread</code> 类的构造函数中完成继承</strong>。</p>
+<p>与 <code>ThreadLocal</code> 使用 <code>Thread#threadLocals</code> 字段存储数据不同，<code>InheritableThreadLocal</code> 使用 <code>Thread</code> 类中另一个专门的字段<code>Thread#ThreadLocal.ThreadLocalMap inheritableThreadLocals</code>。</p>
+<p>默认情况下，<code>inheritThreadLocals</code> 参数为 <code>true</code>。</p>
+<p>只有当父线程的 <code>inheritableThreadLocals</code> 不为 <code>null</code>时，才会执行继承逻辑。</p>
+<pre><code class="language-java">public class InheritableThreadLocal&lt;T&gt; extends ThreadLocal&lt;T&gt; {
+    /**
+     * 重写 getMap 方法，返回线程的 inheritableThreadLocals 字段。
+     */
+    @Override
+    ThreadLocalMap getMap(Thread t) {
+        return t.inheritableThreadLocals;
+    }
+	
+    //所以，当我们调用 itl.set(&quot;value&quot;) 时：
+    //会调用 InheritableThreadLocal 重写的 getMap，获取当前线程的 inheritableThreadLocals。
+	//如果当前线程的 inheritableThreadLocals 为 null，
+    //则调用 createMap 方法，初始化 inheritableThreadLocals 并设置第一个值。
+    
+	//重写 createMap 方法，创建的是 inheritableThreadLocals 而不是 threadLocals。
+    @Override
+    void createMap(Thread t, T firstValue) {
+        t.inheritableThreadLocals = new ThreadLocalMap(this, firstValue);
+    }
+}
+
+private void init(ThreadGroup g, Runnable target, String name,
+                 long stackSize, AccessControlContext acc,
+                 boolean inheritThreadLocals) { // 注意这个参数！
+    // ... 其他初始化代码 ...
+
+    Thread parent = currentThread(); // 获取当前线程（即父线程）
+
+    // ... 
+
+    if (inheritThreadLocals &amp;&amp; parent.inheritableThreadLocals != null) {
+        // 核心逻辑：如果父线程的 inheritableThreadLocals 不为空，则创建继承的 Map
+        this.inheritableThreadLocals =
+            ThreadLocal.createInheritedMap(parent.inheritableThreadLocals);
+    }
+
+    // ... 
+}
+</code></pre>
+<p><code>ThreadLocal.createInheritedMap(ThreadLocalMap parentMap)</code> 是执行实际拷贝工作的工厂方法。它创建了一个新的 <code>ThreadLocalMap</code>，其内部调用了 <code>ThreadLocalMap</code> 的一个特殊私有构造函数：<strong>这个过程的核心是 <code>key.childValue(e.value)</code>。</strong></p>
+<pre><code class="language-java">protected T childValue(T parentValue) {
+	return parentValue; //默认实现：直接传递父值的引用
+}
+</code></pre>
+<p>这就是<code>InheritableThreadLocal</code>的实现：<strong>浅拷贝</strong>。子线程获得的 <code>InheritableThreadLocal</code> 变量与父线程中的是<strong>同一个对象</strong>。</p>
+<h3 id="问题">问题</h3>
+<p><strong>1.浅拷贝带来的线程安全问题</strong></p>
+<p><strong>场景</strong>：如果父线程传递的是一个可变对象（如 <code>HashMap</code>, <code>ArrayList</code>），父线程和子线程将共享这个对象的引用。</p>
+<p><strong>风险</strong>：任何一方对这个共享对象的修改都会对另一方可见，如果没有适当的同步控制，会导致数据竞争和不确定的行为。</p>
+<p><strong>解决方案</strong>：重写 <code>childValue</code> 方法，实现深拷贝或返回一个全新的对象。</p>
+<pre><code class="language-java">private static final InheritableThreadLocal&lt;HashMap&lt;String, String&gt;&gt; CONTEXT =
+    new InheritableThreadLocal&lt;HashMap&lt;String, String&gt;&gt;() {
+        @Override
+        protected HashMap&lt;String, String&gt; childValue(HashMap&lt;String, String&gt; parentValue) {
+            return parentValue == null ? null : new HashMap&lt;&gt;(parentValue); // 深拷贝
+        }
+    };
+</code></pre>
+<p><strong>2.线程池中的数据污染</strong>：</p>
+<p><strong>场景</strong>：在广泛使用线程池的应用中，线程是被复用的，创建新任务（<code>Runnable</code>）时并不会创建新的线程。</p>
+<p><strong>问题</strong>：因此，当线程池中的线程执行一个新任务时，它携带的是上一个任务（可能是完全无关的任务）设置的 <code>InheritableThreadLocal</code> 值，这会造成严重的数据污染。</p>
+<p><strong>解决方案</strong>：需要在任务提交到线程池之前手动设置上下文，并在任务执行完毕后显式清理。或者使用像阿里的 <code>TransmittableThreadLocal</code> 这样的高级库来解决线程池上下文传递问题。</p>
+<p><strong>3.内存泄漏风险</strong>：</p>
+<p>与 <code>ThreadLocal</code> 类似，如果子线程是长生命周期线程（如线程池中的线程），而父线程已经不再使用某个 <code>InheritableThreadLocal</code> 实例，但由于子线程的 <code>ThreadLocalMap</code> 持有对其的强引用（通过 <code>Entry.value</code>），会导致父线程的 <code>InheritableThreadLocal</code> 值无法被回收。必须在子线程中适时调用 <code>remove()</code>。</p>
+<h2 id="小结-2">小结</h2>
+<p><code>Thread</code> 持有 <code>ThreadLocalMap</code>（无锁，线程私有）。</p>
+<p>key 用 <code>WeakReference</code>，value 为强引用，容易导致“Key被回收但值未回收”的场景（内存泄漏）。</p>
+<p>清理 stale 条目的策略是惰性触发（<code>cleanSomeSlots</code>、<code>expungeStaleEntry</code>）。</p>
+<p>使用 <code>remove()</code>（特别在线程池场景）与 <code>try/finally</code> 是必须的工程实践。</p>
+<p><strong><code>ThreadLocal</code>变量务必使用static final修饰</strong>：如果不是 static，每次 new 出来的对象都有自己独立的 <code>ThreadLocal</code>，就是不同实例不共享<code>ThreadLocal Key</code>，会出现Key冗余。即使在同一个线程下，每一个实例从<code>ThreadLocalMap</code>取得的<code>Value</code>都不同！</p>
+<p>加 static 时，多个线程共享一个 <code>ThreadLocal</code> Key，但因为各自的<code>ThreadLocalMap</code>不相同，因此有独立的存储空间，是不同的Value。</p>
+<h2 id="为什么-threadlocalmap-设计成放在-thread-而不是放在-threadlocal-本身">为什么 <code>ThreadLocalMap</code> 设计成放在 <code>Thread</code> 而不是放在 <code>ThreadLocal</code> 本身？</h2>
+<p>因为需要把数据与线程绑定，并且避免跨线程同步（每个线程只访问自己的 map），把 map 存在 <code>Thread</code> 上使得查找很快且无需锁。</p>
+<h2 id="如果我们改用强引用作为-key会怎样">如果我们改用强引用作为 key，会怎样？</h2>
+<p>现代应用大量使用线程池，那么线程池里线程<strong>不会</strong>因为一次任务结束而销毁，它们会长期循环使用。</p>
+<p>那么<code>ThreadLocal</code> 实例将永远被 <code>ThreadLocalMap</code> 引用。</p>
+<p>而<code>ThreadLocalMap</code> 绑定在 <code>Thread#threadLocals</code> 上，那么在 <code>Thread</code> 存活期间，不可被 GC。</p>
+<p>而 Thread 绑定在 线程池中，等同于“直到进程结束才回收”，风险很大，必须全程手动管理<code>ThreadLocal</code>。</p>
+<h1 id="参考">参考</h1>
+<blockquote>
+<p>https://www.xiaolincoding.com/interview/juc.html</p>
+<p>https://javaguide.cn/java/concurrent/java-concurrent-questions-01.html</p>
+<p>https://liuyehcf.github.io/2017/09/25/操作系统原理-进程线程模型/</p>
+</blockquote>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E5%B9%B6%E5%8F%91%E5%92%8C%E5%B9%B6%E8%A1%8C%E7%9A%84%E5%8C%BA%E5%88%AB">并发和并行的区别</a></li>
+<li><a href="#%E5%90%8C%E6%AD%A5%E5%92%8C%E5%BC%82%E6%AD%A5-%E9%98%BB%E5%A1%9E%E5%92%8C%E9%9D%9E%E9%98%BB%E5%A1%9E%E7%9A%84%E5%8C%BA%E5%88%AB">同步和异步、阻塞和非阻塞的区别</a></li>
+<li><a href="#%E7%BA%BF%E7%A8%8B-%E8%BF%9B%E7%A8%8B-%E5%8D%8F%E7%A8%8B%E7%9A%84%E5%8C%BA%E5%88%AB">线程、进程、协程的区别</a></li>
+<li><a href="#%E4%B8%80%E4%B8%AA%E7%BA%BF%E7%A8%8B%E5%8F%AF%E4%BB%A5%E5%90%8C%E6%97%B6%E8%BF%90%E8%A1%8C%E5%A4%9A%E4%B8%AA%E5%8D%8F%E7%A8%8B%E5%90%97">一个线程可以同时运行多个协程吗？</a></li>
+<li><a href="#java%E9%87%8C%E9%9D%A2%E7%9A%84%E7%BA%BF%E7%A8%8B%E5%92%8C%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F%E7%9A%84%E7%BA%BF%E7%A8%8B%E4%B8%80%E6%A0%B7%E5%90%97">Java里面的线程和操作系统的线程一样吗？</a>
+<ul>
+<li><a href="#%E8%A1%A5">补</a></li>
+</ul>
+</li>
+<li><a href="#cpu-%E7%BA%BF%E7%A8%8B-%E8%BF%9B%E7%A8%8B%E5%88%87%E6%8D%A2%E4%B8%8A%E4%B8%8B%E6%96%87%E6%98%AF%E4%BB%80%E4%B9%88">CPU、线程、进程切换上下文是什么</a>
+<ul>
+<li><a href="#%E8%BF%9B%E7%A8%8B%E5%88%87%E6%8D%A2%E4%B8%8A%E4%B8%8B%E6%96%87">进程切换上下文</a>
+<ul>
+<li><a href="#%E5%88%87%E6%8D%A2%E7%9A%84%E8%BF%87%E7%A8%8B">“切换”的过程</a></li>
+<li><a href="#%E5%88%87%E6%8D%A2%E5%8F%91%E7%94%9F%E5%9C%BA%E6%99%AF">切换发生场景</a></li>
+</ul>
+</li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E5%88%87%E6%8D%A2%E4%B8%8A%E4%B8%8B%E6%96%87">线程切换上下文</a>
+<ul>
+<li><a href="#%E5%88%87%E6%8D%A2%E7%9A%84%E8%BF%87%E7%A8%8B-2">“切换”的过程</a></li>
+<li><a href="#%E5%88%87%E6%8D%A2%E5%8F%91%E7%94%9F%E5%9C%BA%E6%99%AF-2">切换发生场景</a></li>
+</ul>
+</li>
+<li><a href="#%E6%80%BB%E7%BB%93">总结</a></li>
+</ul>
+</li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E7%9A%84%E5%88%9B%E5%BB%BA%E6%96%B9%E5%BC%8F">线程的创建方式</a>
+<ul>
+<li><a href="#%E7%BB%A7%E6%89%BFthread%E7%B1%BB">继承<code>Thread</code>类</a></li>
+<li><a href="#%E5%AE%9E%E7%8E%B0runnable%E6%8E%A5%E5%8F%A3">实现<code>Runnable</code>接口</a></li>
+<li><a href="#%E5%AE%9E%E7%8E%B0callable%E6%8E%A5%E5%8F%A3%E4%BD%BF%E7%94%A8futuretask%E7%B1%BB">实现<code>Callable</code>接口/使用<code>FutureTask</code>类</a></li>
+<li><a href="#%E4%BD%BF%E7%94%A8executorservice%E7%BA%BF%E7%A8%8B%E6%B1%A0">使用<code>ExecutorService</code>线程池</a></li>
+<li><a href="#%E4%BD%BF%E7%94%A8completablefuture%E7%B1%BB">使用<code>CompletableFuture</code>类</a></li>
+<li><a href="#%E6%80%BB%E7%BB%93-2">总结</a></li>
+</ul>
+</li>
+<li><a href="#%E5%AE%88%E6%8A%A4%E7%BA%BF%E7%A8%8B%E6%98%AF%E4%BB%80%E4%B9%88">守护线程是什么</a></li>
+<li><a href="#%E8%BF%9B%E7%A8%8B-%E7%BA%BF%E7%A8%8B%E7%9A%84%E7%8A%B6%E6%80%81%E5%8F%98%E5%8C%96">进程、线程的状态变化</a>
+<ul>
+<li><a href="#%E8%BF%9B%E7%A8%8B%E7%8A%B6%E6%80%81%E6%A8%A1%E5%9E%8B">进程状态模型</a>
+<ul>
+<li><a href="#%E4%B8%89%E6%80%81%E6%A8%A1%E5%9E%8B">三态模型</a></li>
+<li><a href="#%E4%BA%94%E6%80%81%E6%A8%A1%E5%9E%8B">五态模型</a></li>
+<li><a href="#%E4%B8%83%E6%80%81%E6%A8%A1%E5%9E%8B">七态模型</a></li>
+<li><a href="#pcb">PCB</a></li>
+<li><a href="#%E8%BF%9B%E7%A8%8B%E7%9A%84%E5%88%9B%E5%BB%BA-%E7%BB%88%E6%AD%A2-%E9%98%BB%E5%A1%9E-%E5%94%A4%E9%86%92">进程的创建、终止、阻塞、唤醒</a></li>
+</ul>
+</li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E5%85%AD%E6%80%81">线程六态</a>
+<ul>
+<li><a href="#new">NEW</a></li>
+<li><a href="#runnable">RUNNABLE</a>
+<ul>
+<li><a href="#%E6%B3%A8%E6%84%8F">注意</a></li>
+<li><a href="#%E5%A6%82%E6%9E%9C%E5%A4%9A%E6%AC%A1%E8%B0%83%E7%94%A8start%E6%96%B9%E6%B3%95%E4%BC%9A%E5%A6%82%E4%BD%95">如果多次调用start方法会如何？</a></li>
+<li><a href="#%E5%8F%AF%E4%BB%A5%E5%9C%A8%E7%BB%88%E6%AD%A2%E7%8A%B6%E6%80%81terminated%E8%B0%83%E7%94%A8%E5%90%97">可以在终止状态TERMINATED调用吗？</a></li>
+</ul>
+</li>
+<li><a href="#blocked">BLOCKED</a></li>
+<li><a href="#waiting">WAITING</a></li>
+<li><a href="#timed_waiting">TIMED_WAITING</a></li>
+<li><a href="#terminated">TERMINATED</a></li>
+<li><a href="#waiting-runnable">WAITING → RUNNABLE</a>
+<ul>
+<li><a href="#objectwait">Object#wait()</a></li>
+<li><a href="#threadjoin">Thread#join()</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#sleep-%E5%92%8C-wait%E7%9A%84%E5%8C%BA%E5%88%AB%E6%98%AF%E4%BB%80%E4%B9%88">sleep 和 wait的区别是什么？</a>
+<ul>
+<li><a href="#sleep-yield%E4%BC%9A%E9%87%8A%E6%94%BEcpu%E5%90%97">sleep、yield会释放CPU吗</a>
+<ul>
+<li><a href="#sleep">sleep</a></li>
+<li><a href="#yield">yield</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E5%81%9C%E6%AD%A2%E7%BA%BF%E7%A8%8B%E5%B8%B8%E7%94%A8%E6%96%B9%E6%B3%95">停止线程常用方法</a>
+<ul>
+<li><a href="#%E9%85%8D%E5%90%88%E5%A4%84%E7%90%86%E4%B8%AD%E6%96%AD">配合处理中断</a></li>
+<li><a href="#threadinterrupted-vs-tisinterrupted">Thread#interrupted vs t#isInterrupted</a></li>
+<li><a href="#%E4%BD%BF%E7%94%A8%E6%A0%87%E5%BF%97%E4%BD%8D%E6%8E%A8%E8%8D%90%E6%96%B9%E5%BC%8F">使用标志位（推荐方式）</a></li>
+<li><a href="#%E4%BD%BF%E7%94%A8-executorservice-%E5%85%B3%E9%97%AD%E7%BA%BF%E7%A8%8B%E6%B1%A0">使用 ExecutorService 关闭线程池</a></li>
+<li><a href="#%E4%BD%BF%E7%94%A8-future-%E5%8F%96%E6%B6%88%E4%BB%BB%E5%8A%A1">使用 Future 取消任务</a></li>
+<li><a href="#%E5%85%B3%E9%97%AD%E4%B8%AD%E6%96%AD%E9%98%BB%E5%A1%9E-io">关闭/中断阻塞 IO</a></li>
+<li><a href="#synchronized%E5%8F%AF%E4%BB%A5%E4%B8%AD%E6%96%AD%E5%90%97">synchronized可以中断吗？</a></li>
+<li><a href="#%E5%B0%8F%E7%BB%93">小结</a></li>
+</ul>
+</li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E5%AE%89%E5%85%A8%E7%9A%84%E5%88%86%E7%B1%BB">线程安全的分类</a>
+<ul>
+<li><a href="#%E4%B8%8D%E5%8F%AF%E5%8F%98">不可变</a></li>
+<li><a href="#%E7%BB%9D%E5%AF%B9%E7%BA%BF%E7%A8%8B%E5%AE%89%E5%85%A8">绝对线程安全</a></li>
+<li><a href="#%E7%9B%B8%E5%AF%B9%E7%BA%BF%E7%A8%8B%E5%AE%89%E5%85%A8">相对线程安全</a></li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E5%85%BC%E5%AE%B9">线程兼容</a></li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E5%AF%B9%E7%AB%8B">线程对立</a></li>
+</ul>
+</li>
+<li><a href="#%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0%E7%BA%BF%E7%A8%8B%E5%AE%89%E5%85%A8">如何实现线程安全</a>
+<ul>
+<li><a href="#%E4%BA%92%E6%96%A5%E5%90%8C%E6%AD%A5">互斥同步</a>
+<ul>
+<li><a href="#synchronized-%E5%85%B3%E9%94%AE%E5%AD%97">synchronized 关键字</a></li>
+<li><a href="#lock-%E6%8E%A5%E5%8F%A3%E5%8F%8A%E5%85%B6%E5%AE%9E%E7%8E%B0">Lock 接口及其实现</a></li>
+</ul>
+</li>
+<li><a href="#%E9%9D%9E%E9%98%BB%E5%A1%9E%E5%90%8C%E6%AD%A5">非阻塞同步</a>
+<ul>
+<li><a href="#%E5%8F%AA%E9%9C%80%E8%A6%81%E5%8F%AF%E8%A7%81%E6%80%A7volatile">只需要可见性：<code>volatile</code></a></li>
+<li><a href="#%E5%8E%9F%E5%AD%90%E7%B1%BBcas">原子类/CAS</a></li>
+</ul>
+</li>
+<li><a href="#%E6%97%A0%E5%90%8C%E6%AD%A5%E6%96%B9%E6%A1%88">无同步方案</a>
+<ul>
+<li><a href="#%E6%A0%88%E5%B0%81%E9%97%AD">栈封闭</a></li>
+<li><a href="#threadlocal">ThreadLocal</a></li>
+</ul>
+</li>
+<li><a href="#%E4%B8%8D%E5%8F%AF%E5%8F%98%E5%AF%B9%E8%B1%A1">不可变对象</a></li>
+<li><a href="#%E5%B9%B6%E5%8F%91%E9%9B%86%E5%90%88%E4%B8%8E%E9%98%9F%E5%88%97">并发集合与队列</a></li>
+<li><a href="#juc%E5%B7%A5%E5%85%B7%E7%B1%BB">JUC工具类</a></li>
+</ul>
+</li>
+<li><a href="#%E5%A6%82%E4%BD%95%E6%9F%A5%E7%9C%8B%E5%93%AA%E4%BA%9B%E7%BA%BF%E7%A8%8B%E6%8C%81%E6%9C%89%E5%93%AA%E4%BA%9B%E9%94%81">如何查看哪些线程持有哪些锁？</a></li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E6%B1%A0">线程池</a>
+<ul>
+<li><a href="#executor-%E7%B1%BB%E5%9B%BE">Executor 类图</a></li>
+<li><a href="#executor%E4%BD%BF%E7%94%A8%E6%B5%81%E7%A8%8B%E5%9B%BE">Executor使用流程图</a></li>
+<li><a href="#threadpoolexecutor">ThreadPoolExecutor</a>
+<ul>
+<li><a href="#%E6%9E%84%E9%80%A0%E6%96%B9%E6%B3%95%E4%B8%8E%E5%8F%82%E6%95%B0%E5%88%86%E6%9E%90">构造方法与参数分析</a>
+<ul>
+<li><a href="#corepoolsize">corePoolSize</a></li>
+<li><a href="#maximumpoolsize">maximumPoolSize</a></li>
+<li><a href="#workqueue">workQueue</a></li>
+<li><a href="#keepalivetime">keepAliveTime</a></li>
+<li><a href="#unit">unit</a></li>
+<li><a href="#threadfactory">threadFactory</a></li>
+<li><a href="#handler">handler</a></li>
+</ul>
+</li>
+<li><a href="#%E5%9C%A8%E6%8F%90%E4%BA%A4%E4%BB%BB%E5%8A%A1%E5%89%8D%E5%8F%AF%E4%BB%A5%E6%8F%90%E5%89%8D%E5%88%9B%E5%BB%BA%E7%BA%BF%E7%A8%8B%E5%90%97">在提交任务前，可以提前创建线程吗？</a></li>
+</ul>
+</li>
+<li><a href="#%E5%B7%A5%E4%BD%9C%E9%98%9F%E5%88%97%E5%B8%B8%E8%A7%81%E7%B1%BB">工作队列常见类</a>
+<ul>
+<li><a href="#blockingqueue">BlockingQueue</a>
+<ul>
+<li><a href="#%E6%94%BE%E5%85%A5%E5%85%83%E7%B4%A0">放入元素</a></li>
+<li><a href="#%E5%8F%96%E5%87%BA%E5%85%83%E7%B4%A0">取出元素</a></li>
+<li><a href="#%E6%9F%A5%E7%9C%8B%E8%BE%85%E5%8A%A9">查看/辅助</a></li>
+</ul>
+</li>
+<li><a href="#arrayblockingqueue">ArrayBlockingQueue</a></li>
+<li><a href="#linkedblockingqueue">LinkedBlockingQueue</a></li>
+<li><a href="#priorityblockingqueue">PriorityBlockingQueue</a></li>
+<li><a href="#delayqueue">DelayQueue</a></li>
+<li><a href="#synchronousqueue">SynchronousQueue</a></li>
+<li><a href="#linkedtransferqueue">LinkedTransferQueue</a></li>
+<li><a href="#delayedworkqueue">DelayedWorkQueue</a></li>
+<li><a href="#linkedblockingdeque">LinkedBlockingDeque</a></li>
+</ul>
+</li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%88%9B%E5%BB%BA%E7%9A%84%E4%B8%A4%E7%A7%8D%E6%96%B9%E5%BC%8F">线程池创建的两种方式</a>
+<ul>
+<li><a href="#%E9%80%9A%E8%BF%87-threadpoolexecutor-%E6%9E%84%E9%80%A0%E5%87%BD%E6%95%B0%E5%88%9B%E5%BB%BA">通过 <code>ThreadPoolExecutor</code> 构造函数创建</a></li>
+<li><a href="#%E9%80%9A%E8%BF%87-executors-%E5%B7%A5%E5%85%B7%E7%B1%BB%E5%88%9B%E5%BB%BA%E4%B8%8D%E6%8E%A8%E8%8D%90">通过 <code>Executors</code> 工具类创建（不推荐）</a></li>
+</ul>
+</li>
+<li><a href="#executor-%E5%85%B3%E9%94%AE%E6%BA%90%E7%A0%81">Executor 关键源码</a>
+<ul>
+<li><a href="#executorexecute%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%A8%8B">Executor#execute工作流程</a></li>
+<li><a href="#ctl">ctl</a></li>
+<li><a href="#execute">execute</a></li>
+<li><a href="#submit">submit</a></li>
+<li><a href="#addworker">addWorker</a></li>
+<li><a href="#gettask">getTask</a></li>
+<li><a href="#runworker">runWorker</a></li>
+<li><a href="#shutdown">shutdown</a></li>
+</ul>
+</li>
+<li><a href="#%E6%AF%94%E8%BE%83">比较</a>
+<ul>
+<li><a href="#scheduledthreadpoolexecutor-vs-timer">ScheduledThreadPoolExecutor vs Timer</a></li>
+<li><a href="#runnable-vs-callablefuture">Runnable vs Callable+Future</a></li>
+<li><a href="#execute-vs-submit">execute() vs submit()</a></li>
+<li><a href="#shutdown-vs-shutdownnow">shutdown()  vs shutdownNow()</a></li>
+<li><a href="#isterminated-vs-isshutdown">isTerminated()  vs isShutdown()</a></li>
+</ul>
+</li>
+<li><a href="#%E5%AE%9E%E8%B7%B5%E5%BB%BA%E8%AE%AE">实践建议</a>
+<ul>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E6%B1%A0%E6%95%B0%E9%87%8F">线程池数量</a></li>
+<li><a href="#%E4%B8%8D%E5%90%8C%E7%B1%BB%E5%88%AB%E7%9A%84%E4%B8%9A%E5%8A%A1%E7%94%A8%E4%B8%8D%E5%90%8C%E7%9A%84%E7%BA%BF%E7%A8%8B%E6%B1%A0">不同类别的业务用不同的线程池</a></li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%91%BD%E5%90%8D">线程池命名</a></li>
+<li><a href="#%E5%85%B3%E9%97%AD%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%8A%A1%E5%BF%85%E8%AE%B0%E5%BE%97%E5%85%B3%E9%97%AD">关闭线程池务必记得关闭</a></li>
+<li><a href="#%E8%B4%9F%E8%B4%A3%E8%80%97%E6%97%B6%E4%BB%BB%E5%8A%A1%E7%9A%84%E7%BA%BF%E7%A8%8B%E6%B1%A0%E9%9C%80%E8%A6%81%E9%87%8D%E7%82%B9%E9%85%8D%E7%BD%AE">负责耗时任务的线程池，需要重点配置</a></li>
+<li><a href="#%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%92%8Cthreadlocal%E5%85%AC%E7%94%A8%E5%AF%BC%E8%87%B4%E7%9A%84%E6%95%B0%E6%8D%AE%E6%B1%A1%E6%9F%93">线程池和ThreadLocal公用导致的数据污染</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#threadlocal-2">ThreadLocal</a>
+<ul>
+<li><a href="#%E8%B0%83%E7%94%A8%E6%B5%81%E7%A8%8B">调用流程</a></li>
+<li><a href="#threadlocal%E5%85%B3%E9%94%AE%E5%AE%9E%E7%8E%B0">ThreadLocal关键实现</a>
+<ul>
+<li><a href="#%E6%A0%B8%E5%BF%83%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84">核心数据结构</a></li>
+<li><a href="#get">get</a></li>
+<li><a href="#initialvalue">initialValue</a></li>
+<li><a href="#set">set</a></li>
+<li><a href="#remove">remove</a></li>
+</ul>
+</li>
+<li><a href="#threadlocalmap%E5%85%B3%E9%94%AE%E5%AE%9E%E7%8E%B0">ThreadLocalMap关键实现</a>
+<ul>
+<li><a href="#%E6%A0%B8%E5%BF%83%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84-2">核心数据结构</a></li>
+<li><a href="#getentry">getEntry</a></li>
+<li><a href="#set-2">set</a></li>
+<li><a href="#replacestaleentry">replaceStaleEntry</a></li>
+<li><a href="#cleansomeslots">cleanSomeSlots</a></li>
+<li><a href="#expungestaleentry">expungeStaleEntry</a></li>
+<li><a href="#rehash">rehash</a></li>
+<li><a href="#resize">resize</a></li>
+<li><a href="#remove-2">remove</a></li>
+</ul>
+</li>
+<li><a href="#inheritablethreadlocal%E5%85%B3%E9%94%AE%E5%AE%9E%E7%8E%B0">InheritableThreadLocal关键实现</a>
+<ul>
+<li><a href="#%E9%97%AE%E9%A2%98">问题</a></li>
+</ul>
+</li>
+<li><a href="#%E5%B0%8F%E7%BB%93-2">小结</a></li>
+<li><a href="#%E4%B8%BA%E4%BB%80%E4%B9%88-threadlocalmap-%E8%AE%BE%E8%AE%A1%E6%88%90%E6%94%BE%E5%9C%A8-thread-%E8%80%8C%E4%B8%8D%E6%98%AF%E6%94%BE%E5%9C%A8-threadlocal-%E6%9C%AC%E8%BA%AB">为什么 <code>ThreadLocalMap</code> 设计成放在 <code>Thread</code> 而不是放在 <code>ThreadLocal</code> 本身？</a></li>
+<li><a href="#%E5%A6%82%E6%9E%9C%E6%88%91%E4%BB%AC%E6%94%B9%E7%94%A8%E5%BC%BA%E5%BC%95%E7%94%A8%E4%BD%9C%E4%B8%BA-key%E4%BC%9A%E6%80%8E%E6%A0%B7">如果我们改用强引用作为 key，会怎样？</a></li>
+</ul>
+</li>
+<li><a href="#%E5%8F%82%E8%80%83">参考</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://kanyewestforreal.github.io/post/android-jetpack4-viewmodel/">
+              <h3 class="post-title">
+                Android Jetpack(4)  ViewModel源码阅读记录
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  This blog is just for me to record the questions, which in my developing.
+  <div class="footer-right">
+    <a class="rss" href="https://kanyewestforreal.github.io//atom.xml" target="_blank">
+      <i class="ri-rss-line"></i> RSS
+    </a>
+    <span id="busuanzi_container_site_pv" style="margin-top: 8px;">
+      本站总访问量<span id="busuanzi_value_site_pv"></span>次
+    </span>
+  </div>
+  <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      // hljs.initHighlightingOnLoad()
+
+      // let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // // This should probably be throttled.
+      // // Especially because it triggers during smooth scrolling.
+      // // https://lodash.com/docs/4.17.10#throttle
+      // // You could do like...
+      // // window.addEventListener("scroll", () => {
+      // //    _.throttle(doThatStuff, 100);
+      // // });
+      // // Only not doing it here to keep this Pen dependency-free.
+
+      // window.addEventListener("scroll", event => {
+      //   let fromTop = window.scrollY;
+
+      //   mainNavLinks.forEach((link, index) => {
+      //     let section = document.getElementById(decodeURI(link.hash).substring(1));
+      //     let nextSection = null
+      //     if (mainNavLinks[index + 1]) {
+      //       nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+      //     }
+      //     if (section.offsetTop <= fromTop) {
+      //       if (nextSection) {
+      //         if (nextSection.offsetTop > fromTop) {
+      //           link.classList.add("current");
+      //         } else {
+      //           link.classList.remove("current");    
+      //         }
+      //       } else {
+      //         link.classList.add("current");
+      //       }
+      //     } else {
+      //       link.classList.remove("current");
+      //     }
+      //   });
+      // });
+
+    </script>
+  </body>
+</html>
